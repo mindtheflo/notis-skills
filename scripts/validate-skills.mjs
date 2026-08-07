@@ -24,4 +24,15 @@ for (const directory of entries) {
   names.add(name);
 }
 
+const displayConfig = JSON.parse(
+  await readFile(new URL('../skills.sh.json', import.meta.url), 'utf8'),
+);
+const grouped = displayConfig.groupings.flatMap((group) => group.skills);
+if (new Set(grouped).size !== grouped.length) {
+  throw new Error('skills.sh.json contains a skill in more than one group');
+}
+for (const name of grouped) {
+  if (!names.has(name)) throw new Error(`skills.sh.json references unknown skill ${name}`);
+}
+
 console.log(`Validated ${names.size} skills: ${[...names].join(', ')}`);

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://skills.sh/schemas/skills.sh.schema.json",
+  "notGrouped": "bottom",
+  "groupings": [
+    {
+      "title": "Build with Notis",
+      "description": "Create apps, skills, and database-powered workflows.",
+      "skills": ["notis-apps", "notis-skill-creator", "notis-query"]
+    },
+    {
+      "title": "Automate Notis",
+      "description": "Schedule work and access Notis through its CLI or hosted MCP.",
+      "skills": ["notis-automation", "notis-cli", "notis-mcp"]
+    },
+    {
+      "title": "Control local tools",
+      "description": "Operate browsers and the local Mac with explicit runtime boundaries.",
+      "skills": ["notis-browser-control", "notis-desktop-use"]
+    }
+  ]
+}
