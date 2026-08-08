@@ -30,6 +30,10 @@ tracked `server/skills/<name>/` folder to
 push to `beta`. The monorepo stays canonical; the public repository is replaced
 from generated tracked-file snapshots and must not be edited directly. This
 layout exposes every skill as `skills/<name>/SKILL.md` for skills.sh indexing.
+The generated public repository CI validates the full collection and performs
+an ephemeral all-skills install after each push. skills.sh uses that install
+telemetry to refresh its cached repository index, so newly mirrored skills do
+not require a manual indexing task.
 
 ## Curated Publishing Sync
 

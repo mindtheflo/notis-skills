@@ -15,5 +15,9 @@ Or choose individual skills from the repository when your agent supports selecti
 
 Every `skills/<name>/SKILL.md` is generated from the canonical `server/skills/<name>/SKILL.md` in the private Notis monorepo. New tracked skills are included automatically; do not edit mirrored files directly.
 
+After each push, CI validates every mirrored skill and installs the complete
+collection in an ephemeral runner. That install telemetry refreshes the
+skills.sh repository index without a manual submission step.
+
 Notis-authored material is MIT licensed. Third-party material retains its
 original license; see `THIRD_PARTY_NOTICES.md`.

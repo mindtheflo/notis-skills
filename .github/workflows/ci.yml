@@ -16,4 +16,10 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-      - run: node scripts/validate-skills.mjs
+      - name: Validate all mirrored skills
+        run: node scripts/validate-skills.mjs
+
+      - name: Refresh the skills.sh index
+        if: github.event_name == 'push'
+        working-directory: ${{ runner.temp }}
+        run: npx --yes skills add mindtheflo/notis-skills --skill '*' --agent codex --yes --copy
