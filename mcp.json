@@ -1,0 +1,28 @@
+{
+  "name": "notis",
+  "title": "Notis",
+  "description": "Connect AI agents to Notis memory, skills, automations, and more than 1,000 apps.",
+  "url": "https://mcp.notis.ai/mcp",
+  "transport": "streamable-http",
+  "version": "1.0.0",
+  "website": "https://www.notis.ai/",
+  "docs": "https://help.notis.ai/agents/overview",
+  "tags": [
+    "productivity",
+    "app-automation",
+    "knowledge-memory",
+    "agent-tools",
+    "integrations",
+    "mcp"
+  ],
+  "tools": [
+    "notis_fetch",
+    "notis_list_toolkits",
+    "notis_search_tools",
+    "notis_describe_tools",
+    "notis_validate_calls",
+    "notis_execute_read",
+    "notis_execute_write",
+    "notis_connect_toolkit"
+  ]
+}

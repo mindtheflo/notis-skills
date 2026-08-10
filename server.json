@@ -1,0 +1,27 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "ai.notis/notis",
+  "title": "Notis",
+  "description": "Connect AI agents to Notis memory, skills, automations, and more than 1,000 apps.",
+  "version": "1.0.0",
+  "websiteUrl": "https://www.notis.ai/",
+  "icons": [
+    {
+      "src": "https://www.notis.ai/notis-app-icon-192.png",
+      "mimeType": "image/png",
+      "sizes": [
+        "192x192"
+      ]
+    }
+  ],
+  "repository": {
+    "url": "https://github.com/mindtheflo/notis-skills",
+    "source": "github"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.notis.ai/mcp"
+    }
+  ]
+}
