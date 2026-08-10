@@ -440,7 +440,7 @@ The sandbox persists across conversation turns. You can:
 
 ### Path 2: Build with your local code agent (Cursor, Claude Code, terminal)
 
-For developers — or their local agent — who want full control over the code. You work in your local editor, use the CLI to scaffold or pull an existing app, develop, build, verify, and deploy. The Notis CLI ships with the desktop app, pre-authenticated for the logged-in user.
+For developers — or their local agent — who want full control over the code. You work in your local editor, use the CLI to scaffold or pull an existing app, develop, build, verify, and deploy. Run the current CLI through NPX and authorize each account profile once with browser OAuth.
 
 The wizard's *Get the prompt* button generates a copy-paste prompt tuned for your selected starting point, so the agent runs the right `notis apps init --from <slug>` or plain `notis apps init` command and then walks you through the code. You can also drive the CLI by hand.
 
@@ -448,13 +448,18 @@ Use [Notis Apps Local Development](#notis-apps-local-development) as the accepta
 
 #### Setup
 
-Install the Notis desktop app and sign in. Desktop writes the authenticated CLI profile; run the CLI through NPX, for example `npx --package @notis_ai/cli@latest -- notis apps list`.
+Authorize the CLI profile, then run commands through NPX. Desktop sign-in is separate and does not provide CLI credentials:
+
+```bash
+npx --package @notis_ai/cli@latest -- notis login
+npx --package @notis_ai/cli@latest -- notis apps list
+```
 
 Verify your setup:
 
 ```bash
-notis doctor
-notis whoami
+npx --package @notis_ai/cli@latest -- notis doctor
+npx --package @notis_ai/cli@latest -- notis whoami
 ```
 
 #### Full workflow
