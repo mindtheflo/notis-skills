@@ -1,25 +1,9 @@
-# Notis Skills and MCP
+# Notis Skills
 
 [![CI](https://github.com/mindtheflo/notis-skills/actions/workflows/ci.yml/badge.svg)](https://github.com/mindtheflo/notis-skills/actions/workflows/ci.yml)
 [![skills.sh](https://skills.sh/b/mindtheflo/notis-skills)](https://skills.sh/mindtheflo/notis-skills)
 
-Open-source agent skills and public integration metadata for the hosted Notis MCP server.
-
-## Notis MCP
-
-Connect AI agents to Notis memory, skills, automations, and more than 1,000 apps.
-
-- **Endpoint:** `https://mcp.notis.ai/mcp`
-- **Transport:** Streamable HTTP
-- **Authentication:** OAuth 2.1 with PKCE
-- **Website:** [notis.ai](https://www.notis.ai/)
-- **Setup guide:** [Connect Notis to your AI agent](https://help.notis.ai/agents/overview)
-
-Compatible MCP clients discover the protected-resource and authorization-server metadata from the endpoint, then open the browser-based Notis authorization flow. The hosted server exposes tools for discovery, validation, reads, approved writes, and connecting additional toolkits.
-
-This repository contains the public skills and integration metadata for the hosted MCP endpoint. It does not contain the private Notis application source code.
-
-## Agent skills
+Open-source agent skills for Notis, connected tools, browser and desktop control, app development, automations, and structured database queries.
 
 Install the complete collection:
 
