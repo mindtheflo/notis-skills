@@ -177,6 +177,13 @@ Bundle + platform
   -> /portal_views/runtime_query (database ops, tool calls)
 ```
 
+The two halves of the bundle travel by different transports, which matters in the desktop
+app: `app.js` is fetched and executed from a blob URL, while `app.css` is a
+`<link rel="stylesheet">` injected into the app's shadow root. Nothing from the Portal's
+own stylesheet crosses that shadow boundary, so if the link fails the app renders as raw
+unstyled HTML and keeps working — see the CSP section in `docs/electron.md`. When the
+descriptor carries no `css_url` at all, the server logs `No css_url resolved for app`.
+
 All Notis apps are built using the Notis CLI. The CLI runs either locally in a repo workspace or inside a Vercel Sandbox. The platform contract is the same regardless of where the CLI runs:
 - the agent edits files directly in the workspace
 - the agent uses the Notis CLI
