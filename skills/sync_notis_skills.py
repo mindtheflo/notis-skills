@@ -400,7 +400,8 @@ async def push_skill(
             update_fields["category"] = "Notis"
         update_fields["name"] = name
         # Frontmatter is the source of truth for independent visibility and
-        # billing policy. Omitted entitlements normalize to the Skills baseline.
+        # billing policy. Omitted entitlements normalize to no extra gate;
+        # legacy `skills` entries are dropped because Skills are all-tier.
         update_fields["required_feature_flag"] = feature_flag
         update_fields["required_entitlements"] = required_entitlements
         supabase.table("curated_skills").update(update_fields).eq("openai_skill_id", openai_skill_id).execute()

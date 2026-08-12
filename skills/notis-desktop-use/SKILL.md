@@ -1,7 +1,6 @@
 ---
 name: notis-desktop-use
 description: Use when a task needs to see or control the user's actual Mac desktop — screenshots, reading on-screen UI, clicking, typing, window/menu/app control — through the Peekaboo CLI on the user's local shell.
-required_entitlements: [skills, desktop_control]
 ---
 
 # Notis Desktop Use Skill
@@ -29,10 +28,10 @@ touch the Mac.
 `mode: "local_shell"`.**
 
 - If it succeeds, all subsequent shell calls run on the user's Mac. Proceed.
-- If it returns `entitlement_upgrade_required`, follow the returned Ultra
-  upgrade/contact-owner action and stop. If it returns
-  `entitlement_check_unavailable`, ask the user to retry; do not call it an
-  upgrade requirement.
+- Your Computer is available on every plan, including Free. If this call
+  unexpectedly returns `entitlement_upgrade_required`, report the access-policy
+  mismatch and stop; do not turn it into Ultra upgrade guidance. If it returns
+  `entitlement_check_unavailable`, ask the user to retry.
 - If it returns an error that the Notis desktop app is not connected, tell the
   user to open the Notis desktop app and turn on **Your Computer** (computer
   use) in settings, then stop. Do **not** run `peekaboo` in the sandbox and do

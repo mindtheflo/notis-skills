@@ -95,12 +95,18 @@ Notis Apps are intentionally a frontend-product platform centered on a standard 
 
 ### Subscription entitlement
 
-Portal app routes keep the consumer-to-builder entitlement ladder:
-`prices.apps` controls installation/runtime (PRO and above), while
-`prices.apps_builder` controls Portal source/build/publish workflows (PRO+ and
-above). CLI-only app source/build commands outside the reviewed native-tool
-matrix also use the central developer entitlement and canonical upgrade
-response.
+Since the 2026-08 pricing re-cut the builder ladder is **all-tier**: the
+`apps_builder` entitlement is granted on every tier including FREE, so
+installing, running, developing, and deploying apps are available to any
+signed-in user. Entitlements resolve from the tier map in
+`server/lib/plan_entitlements.py`, not from `prices.*` booleans (see
+`docs/subscription-management.md`); `apps_external_development` is collapsed
+into `apps_builder` and is no longer read.
+
+What is still tiered is not the builder — it is the compute and the resources an
+app carries. Letting **Notis** write and deploy the code for you needs the Cloud
+Computer (PRO and above). Bundled skills execute per the skills tier rules, and
+bundled automations still need PRO+.
 
 Reviewed native App/database tools are different: they declare PostHog `store`
 for visibility and no App/database plan entitlement. Once their surface allows
@@ -116,28 +122,29 @@ skills.
 | App action / Notis tool | Minimum plan | Denied response |
 | --- | --- | --- |
 | Browse Store and inspect listings | Signed-in user | No billing gate |
-| Install and run apps | PRO | `apps_upgrade_required`, `capability=apps_runtime`, `required_plan=PRO` |
+| Install and run apps | FREE | No billing gate |
 | Reviewed native App/database tools | No App entitlement | Hidden unless surface + PostHog `store` allow them |
-| Six native skill-management tools | PRO+ | Canonical `skills` entitlement response |
+| CLI app source/build/deploy commands | FREE | No billing gate |
+| Portal source/build/publish workflows | FREE | No billing gate |
+| Six native skill-management tools | FREE | Skills are an all-tier entitlement |
 | Nine native automation-management tools | PRO+ | Canonical `automations` entitlement response |
-| Cloud Computer shell/files | PRO+ | Canonical `cloud_computer` entitlement response |
-| Portal source/build/publish workflows | PRO+ | Canonical app-builder/publishing response |
-| CLI-only app source/build commands | PRO+ | Canonical developer-entitlement response |
+| Cloud Computer shell/files | PRO | Canonical `cloud_computer` entitlement response |
+| Notis-builds-it-for-you (sandbox authoring chat) | PRO | Canonical `cloud_computer` entitlement response |
 
-PRO installs the app UI, routes, databases, and starter documents. Premium
-bundled skills and automations remain pending and the response reports their
-counts; onboarding opens with a persistent PRO+ ribbon instead of failing
-before the chat appears. After an upgrade, the first PRO+ onboarding explicitly
-activates those pending assets, maps them to installer-owned IDs, and refreshes
-the Store-install baseline without treating activation as a customization.
-PRO+ installs the same app with those resources active from the start.
-Duplicating a source app remains a PRO runtime action when it contains only UI,
-database structure, and starter rows. If duplication would materialize bundled
-skills or automations, the backend requires PRO+ before creating any copy; it
-never bypasses the normal resource entitlement by cloning them directly.
+Installing an app materializes the app UI, routes, databases, starter documents,
+and bundled skills on every tier. Bundled **automations** remain pending below
+PRO+ and the response reports their counts; onboarding opens with a persistent
+PRO+ ribbon instead of failing before the chat appears. After an upgrade, the
+first PRO+ onboarding explicitly activates those pending assets, maps them to
+installer-owned IDs, and refreshes the Store-install baseline without treating
+activation as a customization. Duplicating a source app is an all-tier runtime
+action unless duplication would materialize bundled automations, in which case
+the backend requires PRO+ before creating any copy; it never bypasses the normal
+resource entitlement by cloning them directly.
 
 Trials mirror the selected plan. After a downgrade, installed apps and their
-data stay available on PRO while builder actions are locked. Cleanup actions
+data stay available and the CLI builder keeps working; only the resources that
+carry their own entitlement (automations, cloud sandbox) lock. Cleanup actions
 such as unpublish, withdraw, reset, and delete remain available. Never delete
 app-owned data as a subscription side effect.
 

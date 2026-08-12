@@ -68,13 +68,19 @@ its `SKILL.md` frontmatter:
 
 - `feature_flag: <key>` syncs to `required_feature_flag` and hides the skill
   unless PostHog returns true.
-- `required_entitlements: [skills, ...]` syncs to
-  `required_entitlements`. Missing access keeps the catalog entry locked and
-  excludes the skill from install, sync pull, and runtime injection.
+- `required_entitlements: [...]` syncs to `required_entitlements`. Omission is
+  `[]`, and legacy `skills` entries are dropped because Skills ship on every
+  tier. Missing access to a declared additional capability keeps the catalog
+  entry locked and excludes the skill from install, sync pull, and runtime
+  injection.
 
 The baseline `skills` entitlement applies to the complete per-user sync pull,
-including custom, community, local, and curated installs. Per-curated-skill
-requirements are additional constraints; they do not replace the baseline.
+including custom, community, local, and curated installs. Since the 2026-08
+pricing re-cut that baseline is satisfied on **every tier, including FREE**, so
+sync is always allowed for a signed-in user; the resolution path and its
+failure modes below are unchanged and still load-bearing for outages.
+Per-curated-skill requirements are additional constraints; they do not replace
+the baseline.
 
 The sync validates both fields against canonical metadata before publishing a
 new OpenAI version. See [Notis Skills Lifecycle → Gate a curated skill on a
@@ -288,9 +294,11 @@ enabled. That path decodes the desktop JWT user id, calls
 It does not fetch sync settings, gather top-level local skills, push local skill
 edits, or reconcile Notis, Claude Code, Cursor, and Codex symlinks. Full skill
 sync is controlled by the user's `sync_enabled` preference and the baseline
-`skills` entitlement; it has no separate PostHog rollout flag. Trial users get
-access through the standard entitlement policy. Computer Use/local shell access
-does not bypass the Skills entitlement for local skill materialization.
+`skills` entitlement; it has no separate PostHog rollout flag. Every tier
+including FREE resolves that entitlement, so in practice `sync_enabled` is the
+only user-facing switch. Trial users get access through the standard entitlement
+policy. Local shell access does not bypass the Skills entitlement for local
+skill materialization.
 
 Curated skills can be pulled and linked locally when they are installed for the user, but local changes to curated skill folders are not pushed back to the server. The push planner skips local folders whose names match cloud curated skills and only updates non-curated user skills.
 
@@ -301,18 +309,17 @@ Curated skills can be pulled and linked locally when they are installed for the 
 - rows with `status: "deleted"`
 - curated installs whose `curated_skill_id` is no longer visible after feature-flag filtering
 
-The baseline Skills entitlement is resolved before any user skill rows are
-returned:
+The baseline Skills entitlement is still resolved before any user skill rows are
+returned. No current tier is denied, but the fail-closed resolver remains
+load-bearing for access-system failures.
 
-- A definitive denial returns HTTP `200` with `skills: []`, the unchanged sync
-  settings, and canonical `entitlement_access` upgrade metadata. Electron treats
-  this as a reconcile-only response: it removes mirrors and agent symlinks named
-  in the previous Notis sync state, clears that managed state, and skips local
-  discovery and push. Unmanaged local user skills are not scanned, moved,
-  deleted, or unlinked.
+- A forced definitive denial returns HTTP `403`; it is not a successful empty
+  pull and does not authorize Electron to remove mirrors or symlinks. Electron
+  also rejects the legacy successful-empty denial envelope without changing
+  local state.
 - An unavailable entitlement check returns retryable HTTP `503`
   `entitlement_check_unavailable`. Electron makes no local changes and retries
-  later; an access-system outage is never interpreted as a downgrade.
+  later. Neither denial nor outage is interpreted as a successful sync.
 
 For curated installs, the backend resolves live content from `curated_skills` at request time. That keeps installed curated skills pointed at the shared template and channel-specific content.
 

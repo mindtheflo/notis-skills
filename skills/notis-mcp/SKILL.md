@@ -57,7 +57,8 @@ them to finish the provider flow before retrying discovery.
 
 Local desktop MCP servers, credentials, shell tools, and desktop controls
 cannot be configured through hosted MCP. The complete Your Computer bundle,
-including Local MCP, requires Ultra.
+including Local MCP, is available on every plan, including Free; configure it
+through Notis Desktop before using it from a local-capable agent surface.
 
 ## Safety boundaries
 
@@ -71,5 +72,6 @@ including Local MCP, requires Ultra.
   debugging overrides, and credential retrieval are intentionally unavailable
   through hosted MCP. Native Store and app-management tools follow the
   server-returned surface and PostHog visibility policy.
-- Skill administration is available. Skills require a PRO+ plan, so a create,
-  update, or install call can return the canonical upgrade-required result.
+- Skill administration is available on every plan, including Free. Individual
+  curated skills can still declare additional paid entitlements; when one does,
+  its install or execution returns the canonical upgrade-required result.

@@ -1,7 +1,6 @@
 ---
 name: notis-browser-control
 description: Use when a task needs browser automation through agent-browser in either a local shell or the Vercel Sandbox, and when the agent must choose the right runtime for that browser work.
-required_entitlements: [skills]
 ---
 
 # Notis Browser Control Skill
@@ -181,11 +180,11 @@ account scope should be narrowed to the specific vault Notis needs.
 
 ## Runtime Selection
 
-The browser-control skill itself requires the `skills` entitlement only. The
-local path separately calls `set_shell_mode`, which requires the Ultra
-`desktop_control` entitlement. If that call returns an upgrade response, keep
-the skill available for Cloud Computer work and do not pretend the local path
-is enabled.
+The browser-control skill and the local `set_shell_mode` path are available on
+every plan, including Free. The local path still needs a connected Notis
+Desktop bridge. Cloud execution separately needs a server-authorized hosted
+runtime; if that runtime is unavailable, keep the local path available and
+surface the returned runtime guidance exactly.
 
 Choose `sandbox_shell` when:
 
