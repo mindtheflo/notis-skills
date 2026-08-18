@@ -218,6 +218,11 @@ The full live terminal stream is written to `.context/terminal.txt`. The file is
 
 `.env` files are not committed. In Cloud Agent VMs, generate them from injected environment variables.
 
+Conductor stages uploaded environment files outside every checkout and applies
+them under a kernel-released advisory lock. Its repository/workspace scripts
+resolve the installed Conductor app first and address its databases by exact id;
+a same-slug database owned by another app is never a fallback write target.
+
 Required secrets:
 
 - `SUPABASE_SUBDOMAIN`
@@ -554,6 +559,13 @@ Use `LOCAL_NOTIS_DATABASE_LIST_DATABASES` for the catalog/list pane and `LOCAL_N
 
 Routes are the only canonical navigation contract for Notis apps. Every configured route must declare an explicit `slug`, and nested static navigation uses `parentSlug`.
 
+The Portal renders the app itself as the parent sidebar row, using the app name
+and icon. Expanding that row reveals every configured route, including the
+default route. Clicking the app name opens the route marked `default: true`, so
+the app row and its nested default route are two links to the same destination.
+The CLI requires exactly one default route. A user's saved **Make primary**
+choice may override that initial destination for their own sidebar.
+
 To model Notes-style sidebars where the portal shows a static route row and injects live collections/sub-collections beneath it, declare the collection on the route itself:
 
 ```typescript
@@ -743,7 +755,10 @@ Browse and install pre-built apps from the Notis App Store.
 - The installed app reuses the published artifact snapshot via the stored manifest
 - Sensitive manifest capabilities are never grants by themselves. For example,
   `capabilities.workspaceDatabases: "read"` is activated only when installation
-  persists the user's `workspace_databases_read` approval. Store updates cannot
+  persists the user's `workspace_databases_read` approval, and
+  `capabilities.cloudComputer: "read"` only when it persists `cloud_computer_read`, and
+  `capabilities.cloudComputer: "shell"` (which implies the read facts) only when it also
+  persists `cloud_computer_shell`. Store updates cannot
   silently add that access. A fresh local app may use its own declaration only
   for its author; sharing the app with a teammate does not grant that teammate
   access to their workspace databases. Store-derived duplicates persist both
@@ -999,6 +1014,34 @@ defineNotisApp({
 
 During Local development, starting the app upserts these source-owned skills onto the stable development app identity. Clicking onboarding refreshes the current `SKILL.md` from the loopback snapshot before opening chat, so skill edits can be tested without deploying or manually replacing a bundled skill. A normal deploy performs the same source-skill sync for the installed app.
 
+#### Skills with supporting files
+
+`skills[].path` is either a Markdown file or a **directory** containing `SKILL.md` plus everything the skill needs:
+
+```typescript
+skills: [
+  { key: 'new-workspace', path: './skills/new-workspace/', name: 'New workspace' },
+]
+```
+
+```
+skills/new-workspace/
+  SKILL.md
+  scripts/
+    run_job.sh
+    upsert_row.py
+```
+
+A directory declaration is packaged as the skill's bundle and materialized whole under `/vercel/sandbox/.notis/skills/<name>/`, so `scripts/` reaches the agent exactly as written. Deploy collects the files from the source tree it already uploads; `notis apps dev` sends the same files inline, so a dev session matches a deploy. Installing the app from the Store copies the bundle into the installer's own storage, so scripts travel with the app.
+
+Rules:
+
+- The directory must contain `SKILL.md` at its root; paths must stay inside the project.
+- The same exclusions as source packaging apply (`node_modules`, `.notis`, `.git`, `dist`, `.env*`, symlinks).
+- A skill's files are capped at 5 MB in total, on top of the 512 KB `SKILL.md` cap.
+- The bundle is re-uploaded only when a content hash over the file set changes, so an unchanged skill folder costs nothing on redeploy.
+- A Markdown-file declaration stays Markdown-only: source is authoritative, so the sync discards any ZIP a Portal edit had attached to the row.
+
 #### Listing metadata + media
 
 Everything the App Store needs to render a listing lives in `notis.config.ts`, `metadata/` for image assets, and a root `CHANGELOG.md` for editable release history, so it travels with the source. The schema mirrors how Raycast extensions describe themselves — short, flat metadata plus conventional source files:
@@ -1073,12 +1116,16 @@ The `categories` array accepts one or more values from the `AppCategory` enum ex
 
 The Store filters listings by these categories and the App Details listing block displays them as chips.
 
-`notis apps verify` enforces:
+`notis apps verify` reports, as `Store readiness:` warnings, and `notis apps verify --listing` / `notis apps publish` enforce:
 - Required listing fields (`title`, `description`, `tagline`, `categories[≥1]`) when the manifest is otherwise complete.
 - A valid root `CHANGELOG.md` with at least one Raycast-style release entry.
 - Three to six screenshots, exact 2000×1250 PNG dimensions, max size (≤2 MB per screenshot), and descriptive alt text for every image.
 - Asset paths stay inside the project root.
+
+`notis apps verify` always enforces, whatever the listing state:
+- Every route mounts in the headless harness without render errors.
 - Runtime database queries stay inside the app's declared database references, and collection routes actually query their configured collection database. A database may still be packaged for automations or agent workflows without every UI route reading it.
+- In `--mode live` only: a route whose runtime calls all failed, or a declared database whose queries never succeeded, fails the route. An app that catches every failed call and renders its error state mounts cleanly, so nothing else would catch it.
 
 The CLI reports these checks during development, App Details shows the same readiness checklist, and the backend enforces them again on Publish. Apps without listing metadata still **deploy and run normally**, but the Publish action remains disabled until the deployed manifest is complete.
 
@@ -1131,6 +1178,7 @@ Important hooks include:
 - `useNotis`
 - `useNotisNavigation`
 - `useTopBarSearch`
+- `useHandover`
 - `useBackend`
 
 ### CLI
@@ -1184,6 +1232,9 @@ The runtime provides capabilities like:
 - `listTools()`
 - `callTool()`
 - `request()`
+- `subscribeDatabase()` — a change signal for an app-owned database; data still comes back through `callTool()`
+- `handover()` — hands a prompt (optionally bound to a declared skill) to the manager chat; the app watches its own databases for the result
+- `cloudComputerFacts()` — read-only cloud computer facts behind the `cloudComputer: 'read'` capability; it never creates, resumes or commands a sandbox
 
 Two runtime modes matter:
 - **Portal development runtime**: a local bundle loaded inside the Electron Portal while the CLI keeps an active dev session alive
@@ -1435,12 +1486,111 @@ Explicit tool declarations and `useTool` calls should use canonical tool names s
 | Hook | Purpose | Example |
 |------|---------|---------|
 | `useTool<TArgs, TResult>(name)` | Call a platform tool | `const { call } = useTool<{ database_slug: string }, unknown>('LOCAL_NOTIS_DATABASE_GET_DATABASE')` |
+| `useDatabaseSubscription(slug, opts?)` | Query an app-owned database and refetch it when its rows change | `const { rows, live, refetch } = useDatabaseSubscription('workspaces')` |
 | `useTools()` | List available tools | `const { tools } = useTools()` |
 | `useNotis()` | Access app, route, generic context, and readiness | `const { app, route, context, ready } = useNotis()` |
+| `useHandover()` | Hand a piece of work to the Notis manager chat | `const { handover, pending, available } = useHandover()` |
 | `useNotisNavigation()` | Navigate between routes/documents | `const { toRoute, toDocument, toApp } = useNotisNavigation()` |
 | `useTopBarSearch(opts)` | Bind the current view to the Portal-owned top-bar search input | `const { setLoading } = useTopBarSearch({ value, onChange })` |
+| `useCloudComputer()` | Read a few facts about the user's cloud computer | `const { facts } = useCloudComputer()` |
 | `useBackend()` | Make direct backend requests | `const { request } = useBackend()` |
 | `useMultiSelect(opts)` | Manage multi-item selection: hover checkboxes, cmd/shift-click, drag-select, Esc/Cmd+A/X/Shift+Arrow shortcuts | `const sel = useMultiSelect({ items: notes, getId: (n) => n.id })` |
+
+#### Change feed (`useDatabaseSubscription`)
+
+`useDatabaseSubscription(databaseSlug, options?)` is `useDocuments` plus freshness: rows written by a skill, an automation or another device reach an open view without polling. It takes every `useDocuments` option (`filter`, `pageSize`, `offset`, `fetchAll`, `enabled`) plus `subscribe` (default `true`) to keep the query but drop the feed, and returns `{ documents, rows, loading, error, refetch, live }` — `rows` is an alias of `documents`.
+
+```tsx
+const { rows, live, refetch } = useDatabaseSubscription('workspaces', { pageSize: 250 });
+
+return (
+  <>
+    {!live && <Button onClick={refetch}>Refresh</Button>}
+    <WorkspaceTable rows={rows} />
+  </>
+);
+```
+
+What it does and does not do:
+
+- **The event is only a signal.** The change feed carries no rows. When it fires, the hook refetches through `LOCAL_NOTIS_DATABASE_QUERY` on the runtime bridge, so app scoping, tool permissions and billing are exactly what they were before — app code never sees data that did not come back through the bridge.
+- **Bursts collapse.** A skill rewriting a table produces one refetch, not one per row (300 ms debounce). Regaining window focus or tab visibility also re-checks, so a view that was backgrounded is correct on return.
+- **`live` is honest.** It is true only while a feed is actually attached. Hosts without one — the `apps dev`/`apps verify` harness, the screenshot stub, the vite preview — return rows normally with `live === false`. Keep a manual refresh control for those, as above.
+- **Only app-owned databases.** The slug is resolved against the databases the app declares; anything else is inert.
+
+#### Handing work over (`useHandover`)
+
+An app displays work; the manager runs it. `useHandover()` is how app code starts a job that is too long or too conversational for a tool call — cloning a repository, setting one up, anything where the agent has to ask questions. The app hands over a message and the manager chat takes it from there, so streaming progress, billing, cancellation and the transcript stay where they already work. Results reach the view through the app's own databases, which is what `useDatabaseSubscription` is for.
+
+```tsx
+const { handover, pending, available } = useHandover();
+
+return available ? (
+  <Button disabled={pending} onClick={() => { void handover({ prompt: 'Create a workspace on notis to fix X' }); }}>
+    Send to Notis
+  </Button>
+) : (
+  <CopyablePrompt prompt="Create a workspace on notis to fix X" />
+);
+```
+
+`handover({ prompt, skill?, autoSend? })` resolves to `{ status: 'drafted' | 'sent' }`:
+
+- **`prompt`** is required. It becomes the message in the manager composer.
+- **`skill`** is a key from `notis.config.ts` -> `skills[].key`. The host rejects a key the app does not declare and a skill that is not installed for the app, so app code can never point the manager at something the user did not get with the app. Omitted, the work is handed over without a skill binding.
+- **`autoSend`** defaults to `false`: the chat opens with the message prepared — `@App @Database… /Skill <prompt>` — for the user to read and send, and the call resolves `drafted`. `true` puts the plain prompt straight into the composer and resolves `sent`.
+- **`available` is honest.** Hosts without a manager chat (the `apps dev`/`apps verify` harness, the vite preview) leave `runtime.handover` undefined and `available` false. Keep the app's own fallback — a copyable prompt — for those, as above.
+
+This is the same machinery as the sidebar's **Onboarding** entry, which is `notis.config.ts` -> `onboarding: { skill, prompt }` handed over the same way; `handover()` lifts it out of onboarding so any button in any view can use it.
+
+#### Cloud computer facts (`useCloudComputer`)
+
+Apps that drive the user's cloud computer used to have to *infer* its state. The Conductor app treated a configured repository as proof that `gh auth login` had happened, because a private clone cannot succeed without it — sound, but it cannot show an account name and cannot notice a revoked credential.
+
+`useCloudComputer()` answers two facts directly, behind an install-time capability:
+
+```typescript
+defineNotisApp({
+  // ...
+  capabilities: { cloudComputer: 'read' },
+})
+```
+
+Declaring `cloudComputer: 'shell'` instead asks for the stronger grant: it implies the
+read facts and, once the user consents (`cloud_computer_shell`), reopens
+`LOCAL_NOTIS_RUN_SANDBOX_SHELL` and the three sandbox file tools for this app's views —
+they are denied to every view otherwise, because shell runs with the sandbox's
+full-authority credentials and the file tools reach the same secrets on disk. Declare it
+only when the app's core actions genuinely run on the cloud computer, the way the
+Conductor app does.
+
+```tsx
+const { facts, refresh } = useCloudComputer();
+const gh = facts?.available ? facts.cli_auth.gh : null;
+
+return gh?.authenticated
+  ? <p>Signed in as {gh.account}</p>
+  : <GithubConnect onConnected={refresh} />;
+```
+
+The payload is exactly:
+
+```json
+{
+  "available": true,
+  "sandbox": { "exists": true, "status": "running", "provider": "vercel", "created_at": "…", "updated_at": "…" },
+  "cli_auth": { "gh": { "authenticated": true, "account": "octocat", "checked_at": "…", "reason": null } }
+}
+```
+
+Read it the way it is meant:
+
+- **It is a read and only a read.** The declared value is `'read'`; the token persisted on approval is `cloud_computer_read`. There is no create, no resume and no command here — those stay behind `LOCAL_NOTIS_RUN_SANDBOX_SHELL` and the reviewed tool surface matrix.
+- **Nothing wakes the VM.** The sandbox is resolved through the read-only readiness path, and `gh auth status` runs *only* when the sandbox is already running, dispatched as internal maintenance so a page render never spends metered Cloud Computer time.
+- **`authenticated: null` means unknown, not signed out.** `reason` says why — `no_sandbox`, `sandbox_not_running`, `probe_failed` — and the app should keep whatever fallback it had for that case.
+- **`available: false` is a shape, not an error.** A user whose plan has no cloud computer gets `{ available: false, reason: 'cloud_computer_unavailable' }`, as do hosts that cannot answer (the `apps dev`/`apps verify` harness, the vite preview).
+- **Facts are cached per user for a few minutes.** An app re-renders far more often than a sign-in changes. `refresh()` re-reads, but it can still see the cached answer, so an app that just drove a sign-in itself should trust what it did and not wait for the facts to catch up.
+- **Only whitelisted fields cross the bridge.** Sandbox ids, owner tokens, provider errors and the raw `gh` output stay server-side.
 
 ### Multi-item actions
 
@@ -1522,6 +1672,11 @@ return (
 | `date` | Date value |
 | `checkbox` | Boolean |
 | `people` | User reference |
+| `secret` | Pointer to a credential held outside the database |
+
+**`secret` is metadata only.** The platform never stores or returns secret material. A secret property holds `{reference, status, metadata}` — the credential's name, its lifecycle state, and non-sensitive details — and every read path replaces even that with a redacted stub (`{present, reference, status, metadata}`). Anything else sent on a write is dropped, and a non-conforming value is stored as `null` rather than kept. There is no value-resolution mechanism yet: declaring a secret property records which credential a row points at, it does not make the credential readable.
+
+> **Deploy order (no migration needed).** The server must ship before any app declares a `secret` property. Older servers normalize unknown property kinds to `rich_text`, so a schema pushed to a pre-`secret` server silently degrades the property to plain text and stores whatever the write path sends verbatim.
 
 ---
 
@@ -1538,7 +1693,7 @@ return (
 | `notis apps dev [dir]` | Start desktop Portal local development for one app or every app in a monorepo workspace |
 | `notis apps build [dir]` | Build and package to `.notis/output/` (bundles `metadata/*` along with the source) |
 | `notis apps screenshot [dir] [--routes <slugs>] [--width <px>] [--height <px>] [--output-dir <dir>] [--raw] [--skip-build]` | Render the configured route/scenario/focus set in a headless harness, apply the deterministic Store presentation, and write the declared `metadata/screenshot-N.png` files (2000×1250). Apps are icon-led like Raycast — there is no cover image, only screenshots. |
-| `notis apps verify [dir]` | Headless render-smoke every route, plus production listing-readiness checks (3–6 screenshots, PNG format, exact dimensions, size bounds, alt text) |
+| `notis apps verify [dir] [--listing] [--mode live]` | Headless render-smoke every route. Listing readiness (3–6 screenshots, PNG format, exact dimensions, size bounds, alt text) is reported as a warning; `--listing` makes it a failure |
 | `notis apps link <app-id> [dir]` | Link local project to remote app |
 | `notis apps pull <app-id> [dir] [--force] [--version <n>]` | Download the source snapshot for one of your own installed apps. The pulled directory is linked to that `app_id` and version via `.notis/state.json`. |
 | `notis apps deploy [dir] [--app-id <id>] [--skip-build] [--direct]` | Build and upload to the linked installed app (`--direct` uploads to Supabase storage directly, bypassing the backend server; auto-fallback on network errors). This does not submit to the Store. |
@@ -1628,6 +1783,19 @@ Local development has three different identities that must stay distinct:
 Only the installed app id is a valid update target. When the local checkout is linked to an installed app through `.notis/state.json`, `notis apps dev` registers the dev session with that `target_app_id`. For store-installed apps, the backend may recreate missing referenced databases by slug from the trusted store snapshot before the Portal runtime resolves the app. This repair only uses snapshot database schema; slug-only manifest references do not create empty databases.
 
 If a local checkout is not linked by id but its snapshot name or development slug resembles an installed backend app, the Portal must not silently treat the local app as that installed app. Until the user or CLI writes an explicit `app_id` link, the primary action remains **Install** and a snapshot install creates a new workspace app. A suggestion-only **Link to existing app** affordance can be added later, but matching alone must never choose the update target.
+
+### Developing against live data (`--live-data`)
+
+By default a dev session gets its own copies of the databases the manifest declares, materialized onto the hidden `<slug>-dev` app row. That has two costs. Slug lookup from outside the app runtime becomes ambiguous — `LOCAL_NOTIS_DATABASE_GET_DATABASE` starts answering "Several databases use the slug 'repositories'" — which breaks the skills that are the only things able to write those rows. And the app mounted under **Local development** reads the empty copies, so it renders first-run onboarding while the installed app holds the real data. Iterating on a view of real rows therefore meant deploying, which is exactly the step the workflow tells you to defer.
+
+```bash
+npx --package @notis_ai/cli@latest -- notis apps dev --live-data
+```
+
+- The flag rides on the ensure call as `use_installed_databases`, which stores it on the dev manifest. It is **per ensure call**: a later `notis apps dev` without the flag puts the session back on its own dev copies.
+- When an installed, non-dev app owned by the same user exists for the dev slug's base (`notes-dev` -> `notes`, matched on the app row slug and then on the slug its name produces), the dev app **skips materialization entirely** — no empty copies, so no ambiguous slug — and `get_app_detail` resolves that installed app's databases for the dev app. Reads and writes then both target the installed app's real rows, through the same tool path and the same owner checks as before.
+- The lookup only ever considers rows the viewer owns, so a Store-derived app belonging to someone else is never a live-data source, and a dev app is never a source for another dev app.
+- With no installed app to borrow from, behavior is exactly today's: the dev copies are materialized, and the ensure response carries a warning that `notis apps dev` prints.
 
 ### Development links and mount/update semantics
 
@@ -1774,7 +1942,8 @@ Use this list when the implementation is ready for verification.
 15. A stale nonce or acknowledgment from a previous `apps dev` run never produces `Mounted in <target desktop>`.
 16. A normal CLI run targets the active profile's Notis or Notis Beta desktop, while an active source-worktree run targets only the desktop instance named by its runtime lease.
 17. The CLI distinguishes serving, mounted, and rendered; it warns without stopping the dev server when the desktop has not acknowledged the session and reports each later transition independently.
-18. The Local development root row uses the app name rather than replacing it with the default route name.
+18. Installed and Local development app rows use the app name and icon, link to the default route, and nest every route beneath them, including that default route.
+19. Collapsing the main Portal sidebar temporarily closes the Workspace and Local development sections in rail mode; reopening restores each section's saved open or closed preference.
 
 ---
 
