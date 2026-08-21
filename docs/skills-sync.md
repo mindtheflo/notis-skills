@@ -6,7 +6,7 @@ Use this doc when the work is about:
 
 - publishing repo-maintained skills from `server/skills` to OpenAI and `curated_skills`
 - understanding channel-specific curated skill metadata for dev, beta, and production
-- debugging Electron sync between Portal-managed skills and local agent folders
+- debugging CLI-owned sync between Portal-managed skills and local agent folders
 - changing how local skills are pushed, pulled, written, deleted, or symlinked
 
 For product lifecycle decisions such as whether a skill is custom, curated, community, or synced, start with [Notis Skills Lifecycle](./notis-skills-lifecycle.md).
@@ -16,12 +16,12 @@ For product lifecycle decisions such as whether a skill is custom, curated, comm
 Notis has two separate skill sync systems:
 
 - Curated skill publishing sync: `server/skills/sync_notis_skills.py` packages repo-maintained and selected upstream skills, creates or versions OpenAI skills, and updates channel fields in `curated_skills`.
-- Desktop local-agent sync: Electron mirrors a signed-in user's Portal skills into local folders and maintains agent-specific symlinks for Notis, Claude Code, Cursor, and Codex.
+- CLI local-agent sync: the npm CLI owns the engine that mirrors a signed-in user's Portal skills into local folders and maintains agent-specific symlinks for Notis, Claude Code, Cursor, and Codex. Electron bundles that same engine and acts only as its long-running scheduler.
 
 Do not mix these paths:
 
 - Curated publishing sync is an operator/deployment workflow for shared catalog skills.
-- Desktop local-agent sync is the end-user workflow for installed skills on one authenticated local account.
+- CLI local-agent sync is the end-user workflow for installed skills on one authenticated local account.
 
 Public distribution is a third, read-only output rather than another runtime
 sync path. `.github/workflows/sync-public-repositories.yml` mirrors every
@@ -167,17 +167,42 @@ For broader Notis test selection and smoke workflows, use `.agents/skills/tools/
 
 ## Local-Agent Sync
 
-Local-agent sync runs for the signed-in Supabase auth user. Electron owns the desktop path; the CLI package does not expose standalone skill sync commands.
+The CLI owns local-agent sync. `notis skills sync` works without Desktop and a
+manual run always reconciles account skills. Electron runs the same CLI-owned
+engine with repeat semantics at startup, after authentication, after
+resume/unlock, and every five minutes while it is running. Only those repeating
+runs honor the account's `sync_enabled` preference.
+
+The preference defaults to `false` when no settings row exists. After the user
+explicitly enables it, repeating Desktop runs refresh account skills. When it
+is off, the repeating invocation exits before pulling, gathering, deleting,
+writing, or relinking skills for the current account. It still removes
+Notis-managed agent links that point into a different account's mirror, so an
+account switch cannot expose the previous account's skills. Neither account's
+mirror is changed. Manual CLI sync remains available.
+
+The CLI also owns three base skills: `notis-apps`, `notis-query`, and
+`notis-cli`. Every CLI launch refreshes their canonical copies under
+`~/.notis/skills/base/` from the package and links all three into the supported
+agent roots. They do not participate in account sync, feature-flag filtering,
+target selection, cloud deletion, or the automatic-sync preference.
+
+Base and account reconciliation share one atomic filesystem lock under
+`~/.notis/skills/`. It serializes Desktop refreshes with manual CLI syncs,
+including across processes. Owner leases are written atomically; an unchanged
+stale lock is atomically moved to a retained content-addressed quarantine
+instead of deleted at the shared pathname. This
+prevents transient link/state writes from being misread as user deletions.
 
 Key files:
 
-- `electron/src/skill-sync/index.ts` - end-to-end sync orchestration
-- `electron/src/skill-sync/cloud-client.ts` - Portal sync API client
-- `electron/src/skill-sync/local-scanner.ts` - top-level local skill gather, dedupe, hashing, bundle creation, scoped writes, and sync state
-- `electron/src/skill-sync/sync-plan.ts` - push-candidate selection
-- `electron/src/skill-sync/symlink-manager.ts` - Notis, Claude Code, Cursor, and Codex symlink reconciliation
-- `electron/src/skill-sync/write-cloud-skill.ts` - cloud bundle download fallback behavior
-- `electron/src/skill-sync/types.ts` - sync payload and `agent_targets` types
+- `packages/cli/src/runtime/base-skills.js` - base-skill installation, updates, backups, and links
+- `packages/cli/src/runtime/skill-sync/index.ts` - end-to-end account-sync orchestration
+- `packages/cli/src/runtime/skill-sync/cloud-client.ts` - Portal sync API client
+- `packages/cli/src/runtime/skill-sync/local-scanner.ts` - top-level local skill gather, dedupe, hashing, bundle creation, scoped writes, and sync state
+- `packages/cli/src/runtime/skill-sync/symlink-manager.ts` - Notis, Claude Code, Cursor, and Codex account-skill link reconciliation
+- `packages/cli/scripts/build-scaffolds.js` - copies canonical base skills from `server/skills`, bundles the TypeScript sync engine, and builds the immutable coding-agent hook runtime for npm
+- `electron/src/cli-skill-sync.ts` - Desktop invocation of the webpack-bundled CLI-owned sync engine; Forge also packages the three canonical base-skill folders as read-only resources
 
 Server endpoints live in `server/routers/portal_skills/_1_code/entry.py`:
 
@@ -188,17 +213,21 @@ Server endpoints live in `server/routers/portal_skills/_1_code/entry.py`:
 
 ### Local Scope
 
-Electron derives the active sync scope from the Supabase access token `sub` claim.
+The CLI derives the active sync scope from `user_id` in the authenticated
+`sync-settings` response. That server-returned Notis id is canonical because a
+Desktop Supabase session and a purpose-scoped CLI OAuth token can use different
+`sub` values for the same account. JWT `sub` remains only an older-server
+fallback during rollout. The Portal endpoints accept both bearer types.
 
 Notis-managed skill mirrors and sync metadata are stored under:
 
 ```text
-~/.notis/skills/users/<authUserId>/skills
-~/.notis/skills/users/<authUserId>/.notis-sync.json
-~/.notis/skills/users/<authUserId>/.notis-gathered-skills.json
+~/.notis/skills/users/<notisUserId>/skills
+~/.notis/skills/users/<notisUserId>/.notis-sync.json
+~/.notis/skills/users/<notisUserId>/.notis-gathered-skills.json
 ```
 
-Before each scan, Electron gathers direct child skill folders or symlinks with a `SKILL.md` from these top-level local agent roots:
+Before each account scan, the CLI gathers direct child skill folders or symlinks with a `SKILL.md` from these top-level local agent roots:
 
 ```text
 ~/.agents/skills
@@ -244,7 +273,7 @@ Each synced skill has `agent_targets` metadata:
 
 When `agent_targets` is missing, all four targets default to `true`.
 
-Electron reconciles symlinks into:
+The CLI reconciles account-skill links into:
 
 ```text
 ~/.agents/skills
@@ -253,52 +282,25 @@ Electron reconciles symlinks into:
 ~/.cursor/skills
 ```
 
-Only Notis-managed symlinks are rewritten or removed. If a non-symlink entry blocks a desired skill path, Electron leaves it in place and skips that link.
+Only Notis-managed account-skill links are rewritten or removed. CLI-owned base links are preserved. If a non-symlink entry blocks an account skill, the CLI leaves it in place and skips that link.
 
-### Electron Sync Flow
+### CLI Account-Sync Flow
 
-`runSkillSync(serverUrl, jwt)` performs this sequence:
+`runSkillSync(serverUrl, jwt, dependencies, options)` performs this sequence:
 
-1. Decode the auth user id from the JWT `sub` claim.
-2. Fetch sync settings from `POST /portal_skills/sync-settings`.
-3. Pull Portal skills from `POST /portal_skills/sync-pull` and write missing or stale cloud skills into the scoped mirror.
-4. If `sync_enabled` is false, stop after mirror materialization, remove managed agent-root symlinks, and persist `.notis-sync.json`.
-5. Gather top-level local skills into the scoped mirror and dedupe conflicts.
-6. Scan scoped local skills with a `SKILL.md` and compute folder hashes.
-7. Push changed local non-curated skills through `POST /portal_skills/sync-push`.
-8. Pull again after a push so local state matches the server.
-9. Delete local skills that were previously synced but no longer exist in the cloud response.
-10. Download or write cloud skills whose server hash differs from unchanged local state.
-11. Reconcile Notis, Claude Code, Cursor, and Codex symlinks from `agent_targets`.
-12. Persist `.notis-sync.json`.
-
-This means the central Notis mirror is populated with every cloud skill that is
-currently visible and entitled for the user, even when full skill sync is
-disabled. A flag-hidden or entitlement-locked curated skill is absent from the
-pull and removed during reconciliation. The disabled state turns off the
-advanced sync behaviors: adopting top-level local skills, pushing local edits,
-and creating symlinks into Notis, Claude Code, Cursor, or Codex roots.
-
-### Local Shell Mirror Refresh
-
-Local shell access does not depend on the full desktop skill sync feature.
-Electron runs a pull-only materialization path for authenticated local-shell
-users at startup, after auth changes, and when local shell is
-enabled. That path decodes the desktop JWT user id, calls
-`POST /portal_skills/sync-pull`, and writes missing or stale cloud skills into:
-
-```text
-~/.notis/skills/users/<authUserId>/skills
-```
-
-It does not fetch sync settings, gather top-level local skills, push local skill
-edits, or reconcile Notis, Claude Code, Cursor, and Codex symlinks. Full skill
-sync is controlled by the user's `sync_enabled` preference and the baseline
-`skills` entitlement; it has no separate PostHog rollout flag. Every tier
-including FREE resolves that entitlement, so in practice `sync_enabled` is the
-only user-facing switch. Trial users get access through the standard entitlement
-policy. Local shell access does not bypass the Skills entitlement for local
-skill materialization.
+1. Fetch sync settings from `POST /portal_skills/sync-settings`.
+2. Use its server-verified `user_id` as the canonical local scope, falling back to JWT `sub` only for an older server that does not return it.
+3. Remove Notis-managed agent links that point into another account's mirror. For an Electron repeating invocation with `sync_enabled` false, stop here without changing either account mirror or current-account links.
+4. Pull Portal skills from `POST /portal_skills/sync-pull` and exclude the three CLI-owned base names.
+5. When the verified id differs from JWT `sub`, gather the former auth-sub mirror into the canonical mirror and reuse matching prior sync state, backing up conflicts.
+6. Gather top-level local skills into the scoped mirror and dedupe conflicts, while treating the base root as externally managed.
+7. Scan scoped local skills, excluding base skills, and compute folder hashes.
+8. Push changed local non-curated skills through `POST /portal_skills/sync-push`.
+9. Pull again after a push so local state matches the server.
+10. Delete account skills that were previously synced but no longer exist in the cloud response. Base skills are never deletion candidates.
+11. Download or write account skills whose server hash differs from unchanged local state.
+12. Reconcile account-skill links from `agent_targets` without removing base links.
+13. Persist account-only `.notis-sync.json` state.
 
 Curated skills can be pulled and linked locally when they are installed for the user, but local changes to curated skill folders are not pushed back to the server. The push planner skips local folders whose names match cloud curated skills and only updates non-curated user skills.
 
@@ -314,16 +316,16 @@ returned. No current tier is denied, but the fail-closed resolver remains
 load-bearing for access-system failures.
 
 - A forced definitive denial returns HTTP `403`; it is not a successful empty
-  pull and does not authorize Electron to remove mirrors or symlinks. Electron
+  pull and does not authorize the CLI to remove mirrors or links. The CLI
   also rejects the legacy successful-empty denial envelope without changing
   local state.
 - An unavailable entitlement check returns retryable HTTP `503`
-  `entitlement_check_unavailable`. Electron makes no local changes and retries
+  `entitlement_check_unavailable`. The CLI makes no local changes and retries
   later. Neither denial nor outage is interpreted as a successful sync.
 
 For curated installs, the backend resolves live content from `curated_skills` at request time. That keeps installed curated skills pointed at the shared template and channel-specific content.
 
-For bundle-backed skills, the backend hydrates bundle files from storage when possible. If bundle hydration fails, the response marks `bundle_hydration_failed` so Electron can fall back to the available cloud skill payload.
+For bundle-backed skills, the backend hydrates bundle files from storage when possible. If bundle hydration fails, the response marks `bundle_hydration_failed` so the CLI can fall back to the available cloud skill payload.
 
 ### Push Semantics
 
@@ -341,7 +343,7 @@ Existing local skills with unchanged folder hashes are not re-versioned. The bac
 
 ### Safe Local Writes
 
-Electron writes cloud skills atomically:
+The CLI writes cloud skills atomically:
 
 - bundle downloads are extracted into a temporary directory first
 - existing skill directories are moved aside as backups during replacement
@@ -354,14 +356,18 @@ Skill names are sanitized before being used as local path segments.
 
 When a skill does not appear locally:
 
-1. Confirm `sync_enabled` through `POST /portal_skills/sync-settings`.
+1. For automatic Desktop refresh, confirm `sync_enabled` through `POST /portal_skills/sync-settings`. For a manual CLI run, this setting is intentionally ignored.
 2. Confirm the user has a visible active `skills` row.
 3. Confirm `agent_targets` includes the expected local agent.
-4. Confirm Electron is authenticated as the expected Supabase `sub`.
-5. Check the scoped mirror under `~/.notis/skills/users/<authUserId>/skills`.
+4. Confirm `sync-settings.user_id` names the expected Notis account; compare bearer `sub` only when diagnosing the older-server fallback.
+5. Check the scoped mirror under `~/.notis/skills/users/<notisUserId>/skills`.
 6. Check `.notis-sync.json` and `.notis-gathered-skills.json` in the same user scope.
 7. Check whether a non-symlink entry blocks the desired path in `~/.codex/skills`, `~/.claude/skills`, or `~/.cursor/skills`.
 8. Check `~/.notis/skills/skill-dedupe-backups/` if a same-name local folder was not selected as canonical.
+
+For one of the three base skills, skip the cloud-row and target checks: verify
+the current CLI package contains `dist/base-skills/<name>/SKILL.md`, then inspect
+`~/.notis/skills/base/<name>` and the agent-root link.
 
 When curated content looks stale:
 
