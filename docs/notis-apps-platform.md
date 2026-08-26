@@ -1897,6 +1897,16 @@ The roots registry lives at `~/.notis/app-dev-roots.json`; `~/.notis/apps` is im
 
 Desktop continuously discovers projects and uses an atomic host lock with stale-owner recovery before starting the Electron-bundled CLI host. Packaged Desktop runs that bundled copy with Electron's Node runtime, so discovery never depends on a global CLI, `npx`, or network access. Simultaneous launches converge on the existing host. Consumer mounts remain in memory; the durable data is only roots plus profile-scoped app links.
 
+Desktop CI and publishing build the CLI's generated publish assets from their
+canonical repository sources before Electron stages them. Packaging then copies
+the same published-file allowlist used by the npm package, installs its
+production dependencies for the target operating system and CPU, and boots that
+staged CLI before a release artifact is accepted. Same-architecture builds use
+the packaged Electron runtime; cross-CPU builds use the build runner's Node
+runtime after validating every packaged production dependency. Desktop CI
+performs the same clean-checkout package smoke and runs for CLI-only changes, so
+a stale or incomplete bundled CLI cannot reach the release workflow.
+
 Manual cleanup for old dev rows is intentionally a runbook, not a migration. To find stale hidden runtime rows:
 
 ```sql
