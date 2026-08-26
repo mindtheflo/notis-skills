@@ -14,7 +14,7 @@ Two surfaces, two responsibilities. Each one keeps its lane — see [Publishing 
 |---|---|---|
 | Scaffold a new app, pull source from another app, dev, build, verify, deploy | ✅ | ❌ |
 | Edit listing metadata + media (screenshots, tagline, category) | ✅ (edit `notis.config.ts` + `metadata/`) | ❌ |
-| Install or update a mounted local-dev snapshot into the user's workspace | ✅ | ✅ (Local development action) |
+| Install or update a mounted local-dev snapshot into the user's workspace | ✅ | ✅ (Workspace DEV-row action) |
 | Publish or Update a store listing (Team or Public) | ✅ after explicit confirmation (`apps publish --confirm-ready`) | ✅ (App Details → Publish/Update) |
 | Unpublish a listing | ❌ | ✅ |
 
@@ -396,11 +396,11 @@ The entry point is the **Create app wizard**, opened from the `+ Create app` but
 The starting point can be:
 
 - **Empty scaffold** — bare Vite + React project with `@notis/sdk`.
-- **A scaffold from the bundled catalog** — every app in `scaffolds/` becomes a scaffold automatically when the CLI is built. The generated `packages/cli/dist/scaffolds/` output is a package artifact, not committed source. Local monorepo CLI runs fall back to reading `scaffolds/` directly when that artifact has not been generated. The wizard, the CLI's `notis apps init --from <slug>`, and the Notis-sandbox skill all read from the same catalog shape (today: `notis-database`, `notis-journal`, `notis-notes`, `notis-random`).
+- **A published Store app** — every published Store app is a scaffold. The catalog lives in the public registry repo ([mindtheflo/notis-apps](https://github.com/mindtheflo/notis-apps), one app per `apps/<slug>/`), and `notis apps scaffolds list [--search <term>]` reads it from there at run time — nothing is bundled inside the CLI. The Portal create dialog derives the same choices from the current public Store listings, while the CLI and Notis-sandbox skill resolve their source from the registry.
 
 Both paths produce the same thing: a Vite + React app installed into the Portal and rendered as a React component. They differ only in *where the CLI runs*.
 
-> Pulling source directly from a Store listing — picking any published app as a scaffold — is not supported. The wizard only exposes the bundled scaffolds. To start from an existing listing, install it first, then use the CLI to run `notis apps pull <app-id>` from your own installed copy. The Portal never downloads app source. See [Forking an existing app](#forking-an-existing-app).
+> `notis apps init <name> --from <slug>` pulls the published app's source straight from the public registry repo (mindtheflo/notis-apps), so forking a Store app no longer requires installing it first. `notis apps pull <app-id>` remains the path for your **own** installed or deployed apps (it also links the checkout to that app id). The Portal itself never downloads app source; source always moves through the CLI. See [Forking an existing app](#forking-an-existing-app).
 
 ### Path 1: Build with Notis (chat / Vercel sandbox)
 
@@ -412,11 +412,11 @@ The simplest way to create an app. The wizard sends your request to the Notis as
 2. **The orchestrator** triages your request and routes it to the app-building agent.
 3. **A sandbox session** is created for you (one persistent sandbox per user, reused across turns). The CLI is pre-authenticated through `NOTIS_JWT`.
 4. **The agent builds the app** inside the sandbox, choosing the right starting point:
-   - Lists bundled scaffolds with `notis apps scaffolds list`, then runs `notis apps init <name> --from <slug>` when one fits, OR
+   - Lists published Store apps with `notis apps scaffolds list` (optionally `--search <term>`), then runs `notis apps init <name> --from <slug>` to download that app's source from the public registry when one fits, OR
    - Runs plain `notis apps init <name>` for the empty scaffold, OR
    - Pulls source from one of the user's already installed apps with `notis apps pull <app-id>`.
 5. **The agent fills in `notis.config.ts`** including manifest listing metadata (tagline and categories), writes the root `CHANGELOG.md`, and runs `notis apps screenshot` to generate `metadata/screenshot-N.png` so it's ready for publish later.
-6. **The agent verifies and deploys** with `notis apps build`, `notis apps verify`, `notis apps deploy`. In this hosted path the sandbox has no desktop **Local development** session, so deploying to your Portal is the only way to preview — that is why deploy is part of the flow here. (Contrast with **Path 2**, where a local desktop dev session exists, deploy is user-gated, and the agent hands off for you to test in Local development first.)
+6. **The agent verifies and deploys** with `notis apps build`, `notis apps verify`, `notis apps deploy`. In this hosted path the sandbox has no desktop-local DEV session, so deploying to your Portal is the only way to preview — that is why deploy is part of the flow here. (Contrast with **Path 2**, where a local desktop dev session exists, deploy is user-gated, and the agent hands off for you to test the DEV-badged Workspace row first.)
 7. **You see progress** in real time and can refine requirements conversationally.
 8. **The app appears** in your Portal, ready to use.
 
@@ -487,7 +487,7 @@ npx --package @notis_ai/cli@latest -- notis whoami
 
 ```bash
 notis apps scaffolds list
-notis apps init "My Task Manager" --from notis-database
+notis apps init "My Task Manager" --from databases
 ```
 
 This creates a Vite + React project with:
@@ -662,11 +662,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 notis apps dev
 ```
 
-This is the canonical local-development command. It should open the Electron Portal directly to the first local app when one is available, and every active local app appears in the **Local development** sidebar group (with a green `DEV` badge). When run from a monorepo root, it discovers every app in the workspace. Local app development requires the desktop app.
+This command permanently registers the current folder as a development root and connects it to the shared host. Every signed-in Electron instance discovers valid apps automatically and shows each once in **Workspace** with a compact `DEV` badge, replacing its installed row in place or appearing at the end when unpublished.
 
-> **This is where a build request finishes.** When a code agent builds an app in this path, the expected endpoint is a working app running under `notis apps dev` in the **Local development** group — *not* a deployed app. The agent should keep `apps dev` running, tell the user the app is testable in Local development, and stop. The app only appears in Local development while an `apps dev` session is running; without one it is absent from that group even if it has been deployed.
+> **This is where a build request finishes.** The expected endpoint is a working app in its DEV-badged **Workspace** row — *not* a deployed app. The root registration survives the command and Desktop restart; no terminal must remain open.
 >
-> **Desktop targeting and mount acknowledgment.** `apps dev` records its session in the registry owned by its resolved runtime. A normal published-CLI run uses the global desktop registry and targets the desktop name stored by the active profile (`Notis` or `Notis Beta`, with an API-host fallback). A CLI run inside an active source worktree reads the exact session-registry path, desktop name, and deep-link scheme from that worktree's runtime lease; a nearby `.context` directory is never enough to redirect it. Electron filters sessions by user, API base, and target desktop name. Once the exact nonce-backed session enters the visible target Portal's final **Local development** sidebar model, the Portal asks Electron to validate it and Electron writes a `listed` acknowledgment beside the registry. Only then does the CLI print `Mounted in <target desktop>`. When the opened route has actually committed its shadow-root content, Portal writes a separate `rendered` acknowledgment and the CLI prints `Rendered in <target desktop>`. A registry row or healthy bundle proves **serving**, not **mounted** or **rendered**.
+> **Multi-instance mounting.** Prod, Beta, and source-development Desktop instances consume the same machine-local source host but create independent authenticated mounts. Sessions are scoped by user and API environment, never by desktop display name. Signing out or quitting detaches only that instance.
 >
 > Electron routes whose synthetic app id contains `__local_dev__` bypass the Store rollout gate. This exception is intentionally limited to a mounted local-development route inside Electron; Store pages, installed apps, and browser routes keep their existing rollout and entitlement gates.
 
@@ -680,13 +680,10 @@ Produces `.notis/output/` containing `manifest.json` and the ES module bundle un
 
 ##### Step 7: Install/update the workspace app — only when the user asks
 
-> **Deploy is user-gated.** Installing or updating the workspace app writes the local snapshot to the user's account (it then shows under **Workspace**, not Local development). A code agent should run these **only after the user has tested the local build and explicitly requested it** — never automatically after a clean build/verify. Treat it like publishing: an outward-facing action the user initiates.
+> **Deploy is user-gated.** Installing or updating the workspace app writes the local snapshot to the user's account; the same Workspace row simply loses its `DEV` badge when local development stops. A code agent should run these **only after the user has tested the local build and explicitly requested it** — never automatically after a clean build/verify. Treat it like publishing: an outward-facing action the user initiates.
 
 ```bash
-# First install: create a workspace app and link this checkout to it
-notis apps create "Task Manager" .
-
-# Later installs from this checkout update the same linked app
+# First install promotes the development app in place; later deploys update it
 notis apps deploy
 ```
 
@@ -697,9 +694,9 @@ notis apps link <app-id>
 notis apps deploy
 ```
 
-After the first install, the local checkout is durably linked to the installed app id in `.notis/state.json`. While `notis apps dev` is running, the dev-session registry mirrors that id so the Portal can show **Update** instead of **Install**. Re-running `notis apps dev` after the app was unmounted must preserve that link.
+After the first install, the local checkout is durably linked to the installed app id in the authenticated environment's `.notis/state.json` profile. Prod, Beta, and source-development accounts can therefore link the same source folder independently.
 
-Development runtime app ids (`manifest.is_dev: true`) are internal mount identities, not install/update targets. `notis apps link` rejects them. If an older CLI or stale state file placed one in `app_id`, `notis apps dev` moves it to `dev_app_id` (unless a newer runtime id is already present), clears the invalid installed-app link, and mounts the project as local-only. A link to a deleted or inaccessible installed app is cleared in the same way, while transport and authentication failures still stop the mount without rewriting state. The Portal also treats any session whose target is absent or hidden as local-only, so malformed legacy state cannot make a running app disappear from **Local development**.
+Development runtime app ids (`manifest.is_dev: true`) are internal mount identities, not link targets. `notis apps link` rejects them. If an older CLI or stale state file placed one in `app_id`, `notis apps dev` moves it to `dev_app_id` (unless a newer runtime id is already present), clears the invalid installed-app link, and mounts the project as a DEV-badged unpublished Workspace row. A link to a deleted or inaccessible installed app is cleared in the same way, while transport and authentication failures still stop the mount without rewriting state. The Portal also treats any session whose target is absent or hidden as unpublished, so malformed legacy state cannot make a running app disappear from Workspace.
 
 Before every mount, the CLI also revalidates `dev_app_id` against the resolved
 runtime. If the checkout last ran against another worktree, Beta, or Production
@@ -723,7 +720,13 @@ Reports issues and warnings about your project configuration.
 
 #### Forking an existing app
 
-Both paths can start from an installed app. To fork a Store listing, **install it first** from `/store`, then pull source from your own installed copy:
+Both paths can start from an existing app. To fork a **published Store app**, download its source straight from the public registry — no install required:
+
+```bash
+notis apps init "My Fork" ./<dir> --from <slug>
+```
+
+To fork one of your **own** installed or deployed apps, pull its source instead:
 
 ```bash
 notis apps pull <app-id> ./<dir>
@@ -841,7 +844,7 @@ The agent modifies the code in your sandbox session and redeploys.
 1. Make changes to your local project files (`notis.config.ts`, pages, components).
 2. Test locally:
    ```bash
-   notis apps dev    # Live development in the desktop sidebar's Local development group
+   notis apps dev    # Live development in place of the app's Workspace entry (DEV badge)
    notis apps build  # Build artifact
    ```
 3. Deploy the update:
@@ -868,11 +871,12 @@ By default, reset preserves the installed app's current database definitions so 
 
 ### Forking an existing app
 
-Any user can install an app they have access to (their own apps, public Store listings, or team Store listings their team can see), pull source from their installed copy, and edit it as the basis for a new app. This is the "fork" flow.
+Any user can fork a **published Store app** by downloading its source from the public registry with `notis apps init --from <slug>` — installing it first is not required. For apps you own or have installed (your own apps, or team Store apps you installed), `notis apps pull` downloads the exact deployed source of your copy. Either way, the checkout becomes the basis for a new app. This is the "fork" flow.
 
 ```bash
-# 1. Install the app from /store first.
-# 2. Pull source from your own installed copy.
+# Fork a published Store app straight from the registry (no install needed):
+notis apps init "My Fork" ./my-fork --from <slug>
+# Or pull source from an app you already have installed or deployed:
 notis apps pull <app-id> ./my-fork
 cd my-fork
 # ...edit notis.config.ts, app/, components/, metadata/...
@@ -882,7 +886,7 @@ notis apps deploy
 notis apps publish --confirm-ready
 ```
 
-Why install-first: the CLI only pulls source from apps you own or can access as installed copies. Pulling directly from a Store listing without installing is not supported.
+`apps pull` scope: the CLI only pulls source from apps you own or can access as installed copies. To obtain source for a published Store app you have not installed, use the registry path (`notis apps init --from <slug>`) instead.
 
 Team-scoped access: anyone on the team can install and edit team-published apps. No one outside the team sees them. Public-published apps are installable by anyone with a Notis account.
 
@@ -1012,7 +1016,9 @@ defineNotisApp({
 
 `skills[].key` is the stable source identity; `onboarding.skill` must equal one of those keys. The Portal resolves the runtime skill by that explicit mapping, opens a new floating Notis conversation, and restores an editable structured `/skill` mention plus the configured prompt. It never auto-sends the prompt, and the action remains available after onboarding is completed.
 
-During Local development, starting the app upserts these source-owned skills onto the stable development app identity. Clicking onboarding refreshes the current `SKILL.md` from the loopback snapshot before opening chat, so skill edits can be tested without deploying or manually replacing a bundled skill. A normal deploy performs the same source-skill sync for the installed app.
+During local development, starting the app upserts these source-owned skills onto the stable development app identity. Declare `devSlug` once in `notis.config.ts` and do not change it when the app's display name changes; this keeps every iteration attached to the same hidden development app. Development-app skills stay available inside that app runtime but are excluded from the global Skills page and desktop skill sync. Clicking onboarding refreshes the current `SKILL.md` from the loopback snapshot before opening chat, so skill edits can be tested without deploying or manually replacing a bundled skill. First deploy verifies that this dev-loop sync matches the source before promotion; later deploys perform the normal source-skill sync for the installed app.
+
+App-owned skills and automations remain visible on the global Skills and Automations pages, including resources attached to a current development app. Those rows are classified in a dedicated **Apps** filter category and carry an `App · <app name>` tag, rather than being mixed into the standalone `custom` skill or schedule/webhook automation categories. The list APIs derive that presentation metadata from `owner_app_id`. Desktop skill sync still excludes development-app skills so a local agent never installs both the development copy and the installed app copy.
 
 #### Skills with supporting files
 
@@ -1233,7 +1239,7 @@ The runtime provides capabilities like:
 - `callTool()`
 - `request()`
 - `subscribeDatabase()` — a change signal for an app-owned database; data still comes back through `callTool()`
-- `handover()` — hands a prompt (optionally bound to a declared skill) to the manager chat; the app watches its own databases for the result
+- `handover()` — opens manager chat with app/resource context and an optional starter prompt or declared skill; the app watches its own databases for the result
 - `cloudComputerFacts()` — read-only cloud computer facts behind the `cloudComputer: 'read'` capability; it never creates, resumes or commands a sandbox
 
 Two runtime modes matter:
@@ -1485,7 +1491,7 @@ Explicit tool declarations and `useTool` calls should use canonical tool names s
 
 | Hook | Purpose | Example |
 |------|---------|---------|
-| `useTool<TArgs, TResult>(name)` | Call a platform tool | `const { call } = useTool<{ database_slug: string }, unknown>('LOCAL_NOTIS_DATABASE_GET_DATABASE')` |
+| `useTool<TArgs, TResult>(name)` | Call a platform tool; identical idempotent reads may opt into in-flight deduping with `call(args, { dedupe: true })` | `const { call } = useTool<{ database_slug: string }, unknown>('LOCAL_NOTIS_DATABASE_GET_DATABASE')` |
 | `useDatabaseSubscription(slug, opts?)` | Query an app-owned database and refetch it when its rows change | `const { rows, live, refetch } = useDatabaseSubscription('workspaces')` |
 | `useTools()` | List available tools | `const { tools } = useTools()` |
 | `useNotis()` | Access app, route, generic context, and readiness | `const { app, route, context, ready } = useNotis()` |
@@ -1494,7 +1500,53 @@ Explicit tool declarations and `useTool` calls should use canonical tool names s
 | `useTopBarSearch(opts)` | Bind the current view to the Portal-owned top-bar search input | `const { setLoading } = useTopBarSearch({ value, onChange })` |
 | `useCloudComputer()` | Read a few facts about the user's cloud computer | `const { facts } = useCloudComputer()` |
 | `useBackend()` | Make direct backend requests | `const { request } = useBackend()` |
-| `useMultiSelect(opts)` | Manage multi-item selection: hover checkboxes, cmd/shift-click, drag-select, Esc/Cmd+A/X/Shift+Arrow shortcuts | `const sel = useMultiSelect({ items: notes, getId: (n) => n.id })` |
+| `useCollectionInteractions(opts)` | Standardize active-item focus, multi-selection, marquee selection, shortcuts, and semantic bulk actions | `const collection = useCollectionInteractions({ items: notes, getId: (n) => n.id })` |
+| `useMultiSelect(opts)` | Deprecated one-minor compatibility wrapper; migrate to `useCollectionInteractions` | — |
+| `useActiveResource(resource)` | Tell Notis which item is focused inside the current view | `useActiveResource({ id: post.slug, kind: 'blog_post', label: post.title })` |
+
+#### Focused resources and selected quotes
+
+The route identifies the surface; `useActiveResource()` identifies the item inside it. Apps should publish a stable id, semantic kind, human label, optional URL/revision, compact attributes, and only the current text or Markdown snapshot that would materially help answer a follow-up. The Portal stamps the installed app and view identity onto this context, so an app cannot claim another app's provenance. Publishing context is local state and does not call a tool; the selected snapshot is attached only when the user sends a chat message.
+
+Wrap selectable content in `NotisSelectionBoundary`. Copy still places ordinary `text/plain` on the clipboard, but it also carries a bounded structured quote. When pasted into Notis chat, that quote becomes its own removable context pill instead of being mixed into the user's instructions.
+
+```tsx
+const resource = {
+  id: post.slug,
+  kind: 'blog_post',
+  label: post.title,
+  revision: String(post.revision),
+  snapshot: { format: 'markdown' as const, content: post.markdown },
+};
+
+useActiveResource(resource);
+
+return (
+  <NotisSelectionBoundary resource={resource}>
+    <Markdown value={post.markdown} />
+  </NotisSelectionBoundary>
+);
+```
+
+Snapshots and quotes reach the agent as explicitly untrusted reference data. They provide grounding, never instructions. Keep them current and concise; use a tool fetch when the complete or freshest record is needed.
+
+#### Storage-neutral Markdown editing
+
+`MarkdownEditor` supplies the canonical Notis BlockNote document editor while the app keeps ownership of storage. It uses the same blocks, slash menu, formatting toolbar, table capabilities, spacing, and theme as Notis documents. Pass `value` and a revision, then persist through `onSave`. This works for Supabase rows, a third-party CMS, Git-backed files, or a Notis document adapter without teaching the editor about any of those stores.
+
+```tsx
+<MarkdownEditor
+  resourceKey={post.slug}
+  value={post.markdown}
+  revision={String(post.revision)}
+  autosaveMs={1000}
+  onSave={({ markdown, expectedRevision }) =>
+    cms.updatePost(post.slug, markdown, expectedRevision)
+  }
+/>
+```
+
+The host debounces autosave, supports Cmd/Ctrl-S, reports dirty/saving state, flushes a dirty draft when the editor unmounts, and returns the next revision from the app callback. Always pass a stable `resourceKey` when the same component position can switch between records; changing it gives each record isolated editor state. Store adapters should use optimistic concurrency (`WHERE revision = expectedRevision`) and reject conflicts rather than silently overwrite newer content. To support local image, video, audio, and file uploads, pass `onUploadFile`; persist the file in the app's own storage and return its durable URL. URL embeds work without that callback. Hosts that do not inject the rich editor fall back to an editable Markdown textarea with the same save contract.
 
 #### Change feed (`useDatabaseSubscription`)
 
@@ -1534,11 +1586,11 @@ return available ? (
 );
 ```
 
-`handover({ prompt, skill?, autoSend? })` resolves to `{ status: 'drafted' | 'sent' }`:
+`handover({ prompt?, skill?, autoSend? })` resolves to `{ status: 'drafted' | 'sent' }`:
 
-- **`prompt`** is required. It becomes the message in the manager composer.
+- **`prompt`** is optional. When omitted, the composer opens with the app/database pills plus the current page or active-resource context supplied by the host, so the user can write in their own words. This is appropriate for feedback buttons.
 - **`skill`** is a key from `notis.config.ts` -> `skills[].key`. The host rejects a key the app does not declare and a skill that is not installed for the app, so app code can never point the manager at something the user did not get with the app. Omitted, the work is handed over without a skill binding.
-- **`autoSend`** defaults to `false`: the chat opens with the message prepared — `@App @Database… /Skill <prompt>` — for the user to read and send, and the call resolves `drafted`. `true` puts the plain prompt straight into the composer and resolves `sent`.
+- **`autoSend`** is reserved for forward compatibility. Current Portal hosts always open the complete prepared message — `@App @Database… /Skill <prompt>` — for the user to read and send, and resolve `drafted`; they never silently discard mentions or submit on the user's behalf.
 - **`available` is honest.** Hosts without a manager chat (the `apps dev`/`apps verify` harness, the vite preview) leave `runtime.handover` undefined and `available` false. Keep the app's own fallback — a copyable prompt — for those, as above.
 
 This is the same machinery as the sidebar's **Onboarding** entry, which is `notis.config.ts` -> `onboarding: { skill, prompt }` handed over the same way; `handover()` lifts it out of onboarding so any button in any view can use it.
@@ -1592,72 +1644,83 @@ Read it the way it is meant:
 - **Facts are cached per user for a few minutes.** An app re-renders far more often than a sign-in changes. `refresh()` re-reads, but it can still see the cached answer, so an app that just drove a sign-in itself should trust what it did and not wait for the facts to catch up.
 - **Only whitelisted fields cross the bridge.** Sandbox ids, owner tokens, provider errors and the raw `gh` output stay server-side.
 
-### Multi-item actions
+### Collection interactions
 
-`useMultiSelect` is the reusable, view-agnostic multi-select primitive — the same one the Notis Inbox uses. It gives any list hover checkboxes, cmd/ctrl-click toggle, shift-click range, rubber-band drag, Esc to clear, Cmd+A to select all, Shift+Arrow to extend, plus per-action keyboard shortcuts in a floating bottom bar. The hook owns all selection state and interaction; apps supply the markup and the bulk actions. It works equally on a `<table>`, a card grid, or any custom layout — only the wiring below changes.
+`useCollectionInteractions` is the canonical state machine shared by Notis Manager and apps. Import it from `@notis/sdk/interactions` when an entry point only needs interaction behavior. `NotisProvider` installs the scoped `ShortcutProvider`; standalone surfaces may install it directly.
 
-Wire it with the prop getters so nothing is hand-rolled:
+The default contract is deliberately consistent: a plain item click clears checkbox selection and activates the item; checkbox or Cmd/Ctrl-click toggles selection without changing the active item; Shift-click and Shift+Arrow select ranges from the explicit anchor or, when that anchor was cleared, from the active item. Empty-space dragging draws a marquee, J/K or arrows move the active item and reset the next range anchor, Enter opens it, X toggles it, Cmd/Ctrl+A selects the supplied items, and Escape clears. Select All never reaches unloaded rows.
 
-- Spread `getContainerProps()` on the list's scroll container (owns drag-select + click-empty-to-clear).
-- Spread `getItemProps(id)` on each row/card (adds the `data-notis-row-id` attribute the drag rectangle searches for, plus the cmd/ctrl-click handler).
-- Spread `getCheckboxProps(id)` into `<MultiSelectCheckbox>`.
-- Render `<MultiSelectDragOverlay rect={sel.dragRect} />` and `<MultiSelectActionBar>` once on the page (both are `position: fixed`).
+Wire list, table, or grid markup through the controller:
+
+- Spread `getContainerProps()` on the collection container and give it the appropriate list/table/grid ARIA role.
+- Spread `getItemProps(id)` on every focusable row or card. It supplies roving `tabIndex`, `aria-selected`, active state, and click/keyboard behavior.
+- Spread `getCheckboxProps(id)` into `SelectionCheckbox`.
+- Render `SelectionMarquee` and `MultiSelectActionBar` when their standard chrome fits the app.
+- Supply `isItemDisabled`, shortcut overrides, feature opt-outs, or `resolveNextId` for custom grid direction without rebuilding selection logic. J/K remain linear `next`/`previous`; Arrow Up/Down reach the resolver as `up`/`down`, and grids can enable Arrow Left/Right with `shortcuts: { left: 'ArrowLeft', right: 'ArrowRight' }`.
+- Set `clearSelectionOnPlainClick: false` only when an app deliberately wants row activation to preserve checkbox selection.
+- When more than one collection is mounted, the last focused or pointer-interacted collection owns collection shortcuts. Route, detail, and modal shortcuts retain their normal higher-scope precedence.
 
 ```tsx
 import {
   MultiSelectActionBar,
-  MultiSelectCheckbox,
-  MultiSelectDragOverlay,
-  useMultiSelect,
-} from '@notis/sdk';
+  SelectionCheckbox,
+  SelectionMarquee,
+  useCollectionInteractions,
+} from '@notis/sdk/interactions';
 import { TrashIcon as Trash2 } from '@phosphor-icons/react';
 
-const sel = useMultiSelect({
+const collection = useCollectionInteractions({
   items: notes,
   getId: (n) => n.id,
-  onHeadChange: (id) => {
-    if (!id) return;
-    document.querySelector(`[data-notis-row-id="${id}"]`)?.scrollIntoView({ block: 'nearest' });
-  },
+  onActivate: (note) => open(note),
+  actions: [{
+    id: 'delete',
+    intent: 'delete', // supplies Notis label + # shortcut
+    icon: <Trash2 className="h-3.5 w-3.5" />,
+    onRun: ({ selectedItems, clearSelection }) =>
+      deleteAll(selectedItems).then(clearSelection),
+  }],
 });
 
 return (
   <>
-    {/* Card grid — note the row is a plain <div>, not a <button> (see gotcha). */}
-    <div {...sel.getContainerProps()} className="grid grid-cols-3 gap-4">
+    <div
+      {...collection.getContainerProps()}
+      role="listbox"
+      aria-multiselectable="true"
+      className="grid grid-cols-3 gap-4"
+    >
       {notes.map((note) => (
-        <div key={note.id} {...sel.getItemProps(note.id)} tabIndex={0} onClick={() => open(note)}>
-          <MultiSelectCheckbox {...sel.getCheckboxProps(note.id)} alwaysVisible={sel.isSelected(note.id)} />
+        <div key={note.id} {...collection.getItemProps(note.id)} role="option">
+          <SelectionCheckbox
+            {...collection.getCheckboxProps(note.id)}
+            alwaysVisible={collection.isSelected(note.id)}
+          />
           {/* ...card body... */}
         </div>
       ))}
     </div>
 
-    <MultiSelectDragOverlay rect={sel.dragRect} />
+    <SelectionMarquee rect={collection.dragRect} />
 
     <MultiSelectActionBar
-      selectedCount={sel.selectedCount}
+      selectedCount={collection.selectedCount}
       itemLabel={{ singular: 'note', plural: 'notes' }}
-      actions={[
-        {
-          id: 'delete',
-          label: 'Delete',
-          shortcut: '#',
-          destructive: true,
-          icon: <Trash2 className="h-3.5 w-3.5" />,
-          onRun: () => deleteAll(sel.getSelectedItems()),
-        },
-      ]}
+      actions={collection.actions}
     />
   </>
 );
 ```
 
-**Gotcha — rows must be plain elements, never `<button>` / `role="button"`.** Drag-select arms from a `mousedown` on the container but bails when the press lands on an interactive element (`button, a, input, textarea, select, [role="button"]`). If a whole row/card is a `<button>`, a drag can never start on it. Use a plain `<div>` (or `<tr>`) with `onClick` + `tabIndex={0}` + an Enter `onKeyDown` for accessibility, exactly like the Inbox's `ThreadRow`. Keep the checkbox itself a real `<button>` — it *should* be interactive so a click toggles instead of starting a drag.
+Semantic actions (`archive`, `star`, `delete`, or `custom`) receive selected ids/items but remain consumer-owned: the app decides mutation, confirmation, loading, error, and undo behavior. Notis defaults E, S, and # may be replaced or disabled.
 
-**Customize per app via `actions[]`.** The action bar is intentionally dumb: each `MultiSelectAction` is just `{ id, label, icon, shortcut?, destructive?, onRun }`. `onRun` can fire a mutation directly, or open app-specific UI first — e.g. notis-notes' "Move to folder" action sets a `pendingFolderAction` state that renders a folder-picker popover, and only mutates once the user picks a target. Shortcuts only fire while the bar is mounted with `selectedCount > 0`.
+Selection, active state, and the range anchor may be controlled independently. Lift `selectedIds`, `activeId`, `anchorId`, and their callbacks when selection should persist across views or detail-panel transitions. The active item is the opened/focused record; checkbox, modifier, range, and marquee gestures do not implicitly open it.
 
-**Shared selection across views.** Because the hook holds state, lifting the `useMultiSelect` call to the page component lets selection persist across view switches (e.g. Gallery ↔ Table) for free — render the chrome in each view and gate `bindKeyboardShortcuts` / `enableDragSelect` per active view. Use `bindKeyboardShortcuts: false` to drop the global Esc/Cmd+A/X/Shift+Arrow listeners and `enableDragSelect: false` to drop the rubber-band rectangle.
+`ShortcutProvider` resolves conflicts once: modal, then detail, active collection, route, and app scope. `useShortcuts` supports chords and timed sequences such as `G I`, ignores repeats by default, and protects typing controls through Shadow-DOM-aware event paths.
+
+Pressing `?` opens the SDK-owned shortcut help dialog. It is generated from the live shortcut registry rather than a second hard-coded list: only enabled commands for the current view and active collection appear, higher-scope conflict winners replace lower-scope commands, and selection-only bulk actions appear and disappear with selection. Give every app shortcut a concise `label` so it is discoverable there. Apps own what commands do—for example, Blog Desk can register validation, delete, and “Give feedback to Notis” actions—while the SDK owns discovery, grouping, keycap display, modal precedence, editable-field protection, and Escape-to-close behavior.
+
+When manager chat adds current-page context to a handover draft, the active resource pill is visually separated from the app/view/database pill group. The pills remain structured composer context; the separator adds no message text.
 
 > Apps mount inside a **Shadow DOM** in the Portal, so the SDK's keyboard handlers resolve the real focused element via `event.composedPath()[0]` (not `event.target`, which the shadow boundary retargets to the host). This is handled inside the SDK — you don't need to do anything — but it's why typing in an app `<input>` doesn't trigger selection shortcuts.
 
@@ -1687,16 +1750,18 @@ return (
 | `notis doctor` | Check CLI config, auth presence, and API reachability |
 | `notis whoami` | Show the active profile, user, and available toolkits |
 | `notis apps list` | List your apps |
-| `notis apps scaffolds list` | Print the scaffold catalog generated from `scaffolds/*` at CLI build time, or read `scaffolds/*` directly during local monorepo development before `dist/` exists |
-| `notis apps init <name> [dir] [--from <scaffold-slug>]` | Scaffold a new app project. With `--from`, copies the named scaffold from the built CLI artifact, falling back to the monorepo `scaffolds/<slug>` source in local development. |
+| `notis apps scaffolds list [--search <term>]` | List the published Store apps from the public registry repo (mindtheflo/notis-apps). Every published Store app is a scaffold; the catalog is fetched at run time, not bundled with the CLI |
+| `notis apps init <name> [dir] [--from <slug>]` | Scaffold a new app project into `~/.notis/apps/<slug>`, or into `[dir]` when you pass one. With `--from`, downloads the named published Store app's source from the public registry. |
 | `notis apps create <name> [dir]` | Create a remote app (and optionally link) |
-| `notis apps dev [dir]` | Start desktop Portal local development for one app or every app in a monorepo workspace |
+| `notis apps dev [dir]` | Canonicalize and permanently register a development root, then connect it to the shared local host |
+| `notis apps roots list` | List the persistent machine-local development roots (`~/.notis/apps` is always present) |
+| `notis apps roots remove <folder>` | Stop watching a registered root; the built-in default root cannot be removed |
 | `notis apps build [dir]` | Build and package to `.notis/output/` (bundles `metadata/*` along with the source) |
 | `notis apps screenshot [dir] [--routes <slugs>] [--width <px>] [--height <px>] [--output-dir <dir>] [--raw] [--skip-build]` | Render the configured route/scenario/focus set in a headless harness, apply the deterministic Store presentation, and write the declared `metadata/screenshot-N.png` files (2000×1250). Apps are icon-led like Raycast — there is no cover image, only screenshots. |
 | `notis apps verify [dir] [--listing] [--mode live]` | Headless render-smoke every route. Listing readiness (3–6 screenshots, PNG format, exact dimensions, size bounds, alt text) is reported as a warning; `--listing` makes it a failure |
 | `notis apps link <app-id> [dir]` | Link local project to remote app |
-| `notis apps pull <app-id> [dir] [--force] [--version <n>]` | Download the source snapshot for one of your own installed apps. The pulled directory is linked to that `app_id` and version via `.notis/state.json`. |
-| `notis apps deploy [dir] [--app-id <id>] [--skip-build] [--direct]` | Build and upload to the linked installed app (`--direct` uploads to Supabase storage directly, bypassing the backend server; auto-fallback on network errors). This does not submit to the Store. |
+| `notis apps pull <app-id> [dir] [--force] [--source-version <n>]` | Download the source snapshot for one of your own installed apps into `~/.notis/apps/<app-slug>`, or into `[dir]` when you pass one. The pulled directory is linked to that `app_id` and version via `.notis/state.json`. |
+| `notis apps deploy [dir] [--app-id <id>] [--skip-build]` | Build and upload to the linked installed app. A first deploy promotes the DEV app in place; existing apps should be linked first so the installed identity stays exact. This does not submit to the Store. |
 | `notis apps publish [dir] [--app-id <id>] --confirm-ready` | Submit the matching deployed version to Team or Public Store review after the user explicitly confirms App Details is ready. |
 | `notis apps doctor [dir]` | Check project health (linked state, build artifacts) and **listing readiness** (which listing fields or `metadata/` images are missing for Publish) |
 
@@ -1707,13 +1772,12 @@ There is no separate `notis apps update` command: `apps publish --confirm-ready`
 **New app from scratch:**
 ```bash
 notis apps scaffolds list
-notis apps init "My App" --from <scaffold-slug>
-cd my-app
+notis apps init "My App" --from <slug>   # or: ... --from <slug> ~/code/my-app
+cd ~/.notis/apps/my-app
 notis apps dev
-# ... edit files in the desktop sidebar's Local development group ...
+# ... edit files while the app runs in place of its Workspace entry (DEV badge) ...
 notis apps build
 notis apps verify
-notis apps create "My App" .
 notis apps deploy
 ```
 
@@ -1736,41 +1800,44 @@ notis apps deploy
 
 ## Notis Apps Local Development
 
-`notis apps dev` is the single local-development workflow for Notis Apps. It gives developers a Raycast-style loop:
+Notis Desktop owns one automatic, machine-local development workflow. `notis apps dev [folder]` registers a root permanently; after that, launching any signed-in Prod, Beta, or source-development Desktop discovers and mounts valid apps without a sidebar action or a terminal process that must be kept alive.
 
-- one canonical command: `notis apps dev`
+- one persistent roots registry, with `~/.notis/apps` always included
 - one real host UI: the Notis Portal
-- one local development surface: a **Local development** group at the top of the desktop sidebar (above Workspace), visible only when the user is in Electron *and* one or more `notis apps dev` sessions are active
-- all apps in the target workspace run at the same time
+- one sidebar entry per app: active source **replaces its installed app's Workspace entry in place** (same slot, compact `DEV` badge); genuinely new source appears once at the end
+- one loopback development host per macOS user, one build watcher per discovered app, and ephemeral authenticated consumers per Desktop instance
 - no mock portal, no mock-runtime dev mode, no `run dev`, no preview-only side path
 
-Local app development requires the Electron desktop app. Hosted/browser Portal local-dev support is intentionally not part of this workflow — when the dev session ends, the sidebar group disappears and the user falls back to the installed app under Workspace.
+Local app development requires Electron; hosted/browser Portal never consumes loopback apps. Quitting or signing out detaches only that Desktop instance. Registered roots remain, and the shared host exits after its final consumer. The host also reads the ephemeral consumer leases, so an instance that crashes or is force-quit expires without leaving an orphaned host. A failed rebuild keeps serving the last successful bundle, reports diagnostics outside the sidebar, and retries on the next filesystem change. There are no offline rows, play icons, manual-start actions, or stop-session actions.
 
 ### Target developer experience
 
-Run `notis apps dev` from either:
+Register any folder with `notis apps dev [folder]`. Discovery is deliberately bounded to:
 
-- a single app directory containing `notis.config.ts`
-- a monorepo root containing `apps/*/notis.config.ts`
+- the root itself when it contains `notis.config.*`
+- direct children containing `notis.config.*`
+- conventional `apps/*` children containing `notis.config.*`
+
+Unrelated nested trees, dot/underscore folders, and `node_modules` are never recursively scanned. The host continuously reconciles these locations, so adding or deleting an app updates every attached Desktop after the first successful build.
 
 The CLI should then:
 
 1. Discover every local app in scope.
 2. Start a local watch/build loop for every discovered app.
 3. Serve all local bundles from one loopback dev server.
-4. Register active dev sessions in the local desktop registry and heartbeat them while running.
-5. Report each bundle as serving, then wait for an exact session/app/slug/nonce `listed` acknowledgment from the visible target Electron window before reporting it as mounted.
-6. Open the explicitly targeted Electron Portal to the first active local app, falling back to the Store only when no local app route is available.
-7. Report the first route as rendered only after the target Portal commits the app root inside the shadow mount and returns a separate `rendered` acknowledgment.
+4. Publish ephemeral host metadata and heartbeat it while the source host or an authenticated mount agent is running.
+5. Share source manifests and bundles with every attached authenticated consumer; each Desktop creates its own in-memory mount/runtime and capability decision.
+6. Reconcile add/change/delete events without targeting a desktop name.
+7. Retain registered roots across Desktop and machine restarts.
 
 The Portal should then:
 
-1. Show every active local app in the **Local development** sidebar group above Workspace.
+1. Show every active local app in **Workspace** with a `DEV` badge, substituting a linked installed row in place and appending an unpublished row.
 2. Keep installed/live apps visible as normal installed apps.
-3. Show a separate local-development variant when an active dev session targets an installed app by id.
-4. Use the local bundle only for that local-development variant.
+3. Substitute the local-development variant into the installed app's single canonical row when an active mount targets it by id or unique exact slug.
+4. Use the local bundle only while that substituted mount is active.
 5. Fall back to only the installed bundle when the local session ends.
-6. Acknowledge only nonce-backed sessions that reached the final Local development sidebar model; Electron must reject stale or invented acknowledgments that do not match a current authorized session.
+6. Never persist sidebar visibility acknowledgments or target a particular Desktop instance.
 
 Backend app rows use `id` as the stable identity. `apps.slug` is a user-scoped readable label and may be reused by different users; if the same user creates another app with that slug, the backend appends a numeric suffix. Portal routes must therefore use id-bearing slugs such as `/apps/<name>-<app-id>`, not `apps.slug` alone.
 
@@ -1782,39 +1849,53 @@ Local development has three different identities that must stay distinct:
 
 Only the installed app id is a valid update target. When the local checkout is linked to an installed app through `.notis/state.json`, `notis apps dev` registers the dev session with that `target_app_id`. For store-installed apps, the backend may recreate missing referenced databases by slug from the trusted store snapshot before the Portal runtime resolves the app. This repair only uses snapshot database schema; slug-only manifest references do not create empty databases.
 
-If a local checkout is not linked by id but its snapshot name or development slug resembles an installed backend app, the Portal must not silently treat the local app as that installed app. Until the user or CLI writes an explicit `app_id` link, the primary action remains **Install** and a snapshot install creates a new workspace app. A suggestion-only **Link to existing app** affordance can be added later, but matching alone must never choose the update target.
+Development identity precedence is deterministic and profile-scoped: (1) an explicit persisted link for the authenticated API/user profile; (2) one unique project-local installed-app id remembered by an older profile and still accessible in the current environment; (3) one accessible non-development app whose row slug or shipped `manifest.app.slug` exactly equals the development slug without `-dev`; (4) an isolated development runtime. A unique migrated or exact-slug match is persisted to the current profile. Multiple matches fail closed and require `notis apps link`; display names are never considered. Legacy scalar `.notis/state.json` links migrate compatibly into the first authenticated profile.
 
-### Developing against live data (`--live-data`)
+### One app, one resource set: dev runtime semantics
 
-By default a dev session gets its own copies of the databases the manifest declares, materialized onto the hidden `<slug>-dev` app row. That has two costs. Slug lookup from outside the app runtime becomes ambiguous — `LOCAL_NOTIS_DATABASE_GET_DATABASE` starts answering "Several databases use the slug 'repositories'" — which breaks the skills that are the only things able to write those rows. And the app mounted under **Local development** reads the empty copies, so it renders first-run onboarding while the installed app holds the real data. Iterating on a view of real rows therefore meant deploying, which is exactly the step the workflow tells you to defer.
+A dev session is the same app running from local source, not a second app with a second dataset — the way `npm run dev` serves the same database and jobs as the deployed site. Databases, bundled skills, and bundled automations all resolve from one exact app identity. Two rules follow:
+
+**Linked dev sessions bind to that exact installed app's resources by default.** The backend verifies edit access to the exact non-dev app selected by the precedence above. Database reads and writes target the real rows, app detail exposes the installed app's bundled skills and automations, and local source-skill sync updates those same installed skill identities. A database slug newly declared in `notis.config.ts` is created **on the installed app** immediately. An unlinked or pre-first-deploy session has no installed id, so it uses the dev app's own resources until promotion.
+
+A legacy checkout that remembers only a hidden `dev_app_id` auto-links only when exactly one accessible installed app has the canonical slug. Ambiguity stops before ensure/materialization and prints the explicit `notis apps link` recovery path.
 
 ```bash
-npx --package @notis_ai/cli@latest -- notis apps dev --live-data
+npx --package @notis_ai/cli@latest -- notis apps dev             # your app, your data
+npx --package @notis_ai/cli@latest -- notis apps dev --scratch   # isolated empty copies
 ```
 
-- The flag rides on the ensure call as `use_installed_databases`, which stores it on the dev manifest. It is **per ensure call**: a later `notis apps dev` without the flag puts the session back on its own dev copies.
-- When an installed, non-dev app owned by the same user exists for the dev slug's base (`notes-dev` -> `notes`, matched on the app row slug and then on the slug its name produces), the dev app **skips materialization entirely** — no empty copies, so no ambiguous slug — and `get_app_detail` resolves that installed app's databases for the dev app. Reads and writes then both target the installed app's real rows, through the same tool path and the same owner checks as before.
-- The lookup only ever considers rows the viewer owns, so a Store-derived app belonging to someone else is never a live-data source, and a dev app is never a source for another dev app.
-- With no installed app to borrow from, behavior is exactly today's: the dev copies are materialized, and the ensure response carries a warning that `notis apps dev` prints.
+`--scratch` is the marked case, for fixture work and destructive experiments: the session materializes its own isolated resources on the hidden `<slug>-dev` row, exactly the old default. The choice is **per ensure call** — a later plain `notis apps dev` puts the session back on the installed app's resources. (`--live-data` is accepted as a deprecated no-op; it names what is now the default.)
+
+**First deploy promotes, never forks.** A project that has only ever run `notis apps dev` deploys by promoting the dev app in place: the same app row loses its `is_dev` markers and its `-dev` slug suffix, and every database, row, and capability grant carries over because `owner_app_id` never changes. `notis apps deploy` does this automatically when `.notis/state.json` has a `dev_app_id` but no `app_id`. Promotion refuses when an installed app for the base slug already exists — that is a lost `state.json`, and the fix is `notis apps link`, not a second app.
+
+Before the first deploy there is no installed app to bind to, so the session quietly uses the dev app's own databases. Before touching the deterministic `vN+1` storage prefix, the backend acquires a short app-row deployment lease with an optimistic timestamp CAS; this serializes concurrent deploys and lets the lease owner clear a crashed predecessor's uncommitted prefix safely. Cleanup failure is a distinct recovery-required error, never an ordinary retry conflict. The backend performs promotion in the final app update only after the build artifacts and editable source upload succeed, keeping the same app id and databases without exposing a partially deployed installed app. The active local session is retargeted to that installed identity after success.
+
+Two boundaries worth knowing. Schema changes declared in `notis.config.ts` for an *existing* database are not applied by dev sessions or by `notis apps deploy` — only the Store update path rewrites schemas (`app_update_service.persist_effective_state`, destructively). And because plain dev sessions write real data, agents iterating on write paths should be pointed at `--scratch` first.
 
 ### Development links and mount/update semantics
 
-The durable development link lives in `.notis/state.json` and is mirrored into the active dev-session registry while `notis apps dev` runs. The link is created or refreshed by:
+The durable development link lives in the authenticated API/user profile inside `.notis/state.json` and is reflected in ephemeral host metadata while a source runtime is attached. The link is created or refreshed by:
 
-- `notis apps create "<name>" .` after first install
+- a successful first `notis apps deploy`, which promotes the dev app in place
 - `notis apps link <app-id> .`
 - `notis apps pull <app-id> <dir>`
-- the Portal **Install** action for a mounted local-only app, after the backend returns the created installed app id
+- the Portal **Install** action for a mounted local-only app, after the backend atomically promotes and saves that dev app
 
 Button and CLI behavior follow that link:
 
-- **Unlinked mounted dev session**: Portal action is **Install**; CLI first-install flow is `notis apps create "<name>" .` then `notis apps deploy`. After success, the checkout and active dev session become linked to the created app id.
+- **Unlinked mounted dev session**: Portal action is **Install**; CLI first-install flow is `notis apps deploy`. Both surfaces atomically save and promote the existing dev app, then link the checkout and active session to that same id.
 - **Linked mounted dev session**: Portal action is **Update**; CLI flow is `notis apps deploy` or `notis apps deploy --app-id <app-id>`. It must update the linked installed app rather than creating another app.
-- **Unlinked session with possible match**: the CLI may print a warning or suggestion, and the Portal may add a secondary link action in a later pass. Neither surface should update a match until the link is explicit.
-- **Mounted app gets unmounted**: stopping `notis apps dev` removes only the dev-session registry entry. It must not remove `.notis/state.json`. Running `notis apps dev` later remounts the project with the same `target_app_id`, so the Portal still shows **Update**.
-- **Installed app is not mounted locally**: App Details can offer **Mount for development**. That flow should run the same source-checkout path as the CLI, `notis apps pull <app-id> <dir>`, which writes `.notis/state.json`, installs dependencies if needed, and starts `notis apps dev <dir>`. The newly mounted session is immediately linked and therefore shows **Update**.
+- **Unique exact-slug match**: the CLI persists the match for the authenticated profile and Portal substitutes one row in place. Ambiguous matches fail closed.
+- **Source disappears or its root is unregistered**: every consumer detaches the local mount; the installed row returns in its saved position when one exists.
+- **Desktop signs out or quits**: only that consumer lease is removed. Other Prod, Beta, and source-development instances remain mounted.
 
-The active dev-session registry should include the local session id, a unique per-app mount nonce, source directory, dev slug, manifest snapshot, bundle URLs, `app_id` for the hidden dev-runtime app row, and optional `target_app_id` for the installed workspace app. The registry is ephemeral and can be rebuilt from `.notis/state.json`; it is not the source of truth for the link. Electron persists validated `listed` acknowledgments in the sibling mount-ack file. The CLI accepts an acknowledgment only when its session id, app id, dev slug, and nonce all match the current run, so an acknowledgment from an earlier run cannot produce a false mounted result.
+The ephemeral host exchange includes a session id, source-host pid, source directory, dev slug, bundle URL, build-readiness flag, authenticated user/API scope, `app_id` for the hidden development runtime, and optional `target_app_id` for an installed app. It can be rebuilt from roots and profile-scoped `.notis/state.json` links and is not the source of truth for identity. Electron exposes only its authorized, build-ready subset as an in-memory per-instance mount; there is no sibling acknowledgment file or remembered offline mount.
+
+### Persistent roots and automatic mounts
+
+The roots registry lives at `~/.notis/app-dev-roots.json`; `~/.notis/apps` is implicit and cannot be removed. On first read, valid legacy `app-dev-sessions-projects.json` directories are migrated into roots and the legacy file is retired. Roots are machine-local to the current macOS user and contain no authentication material.
+
+Desktop continuously discovers projects and uses an atomic host lock with stale-owner recovery before starting the Electron-bundled CLI host. Packaged Desktop runs that bundled copy with Electron's Node runtime, so discovery never depends on a global CLI, `npx`, or network access. Simultaneous launches converge on the existing host. Consumer mounts remain in memory; the durable data is only roots plus profile-scoped app links.
 
 Manual cleanup for old dev rows is intentionally a runbook, not a migration. To find stale hidden runtime rows:
 
@@ -1833,31 +1914,60 @@ The Electron Portal fetches local bundles directly from loopback, for example `h
 
 The stable loopback URL always serves the current SDK output under `.notis/output/bundle`. Legacy `dist/app.js` outputs are invalid and must be rebuilt with the current Notis CLI instead of normalized at runtime.
 
-The same loopback server exposes `GET /a/<slug>/snapshot` for the Local development install/update and onboarding flows. When a user clicks **Install** or **Update** on an app that is currently running from a local dev session, the Portal snapshots the current manifest, bundle files, and editable source files, then saves them through `/cli_tools` to create or update the installed app version on the user's account. When the app declares onboarding, its root row also exposes a setup action; Local development uses the snapshot to refresh the source-owned onboarding skill before composing the Notis chat draft. App Store submission starts from an installed app version, not directly from a local-only dev session.
+The same loopback server exposes `GET /a/<slug>/snapshot` for the local Install/Update and onboarding flows. When a user clicks **Install** or **Update** on an app that is currently running from a local dev session, the Portal snapshots the current manifest, bundle files, and editable source files, then saves them through `/cli_tools` to promote the existing development app or update its installed version. When the app declares onboarding, its root row also exposes a setup action; local development uses the snapshot to refresh the source-owned onboarding skill before composing the Notis chat draft. App Store submission starts from an installed app version, not directly from an unpublished dev session.
 
 Update behavior depends on whether the local app has a backend target:
 
 - If the local dev session targets an existing backend app by linked id, **Update** writes the latest local snapshot to that existing backend app and increments its installed version.
-- If the local app has no backend target, **Install** first registers a backend app for the user's account, saves the local snapshot into that new app record, then persists the returned app id into both `.notis/state.json` and the active dev-session registry.
-- The live/backend app entry is not replaced by the local bundle. Users can open the live version and the local-development version side by side while the dev session is active.
+- If the local app has no backend target, **Install** first registers a backend app for the user's account, saves the local snapshot into that new app record, then persists the returned app id in that authenticated environment's `.notis/state.json` profile and refreshes the active mount.
+- The canonical Workspace entry is replaced in place by local source. There is never a second `DEV` row for the same installed app.
 
-Electron is responsible for:
+Electron and the shared host are responsible for:
 
-- reading active dev sessions from the local app-dev session registry
-- authorizing visibility of those sessions to the owning user
-- exposing dev-session metadata to the Portal renderer
-- validating Portal mount acknowledgments against the current authorized session set and persisting exact nonce matches
+- reading persistent roots and reconciling bounded project discovery
+- sharing source builds while creating an authenticated mount per Desktop instance
+- authorizing visibility of mounts to the owning user and API environment
+- exposing only active mount metadata to the Portal renderer
+- detaching only the current instance's in-memory mounts on sign-out or quit
 
-By default, the registry is `~/.notis/app-dev-sessions.json`, and each session records its target desktop name so installed Notis and Notis Beta processes cannot claim one another's mounts. The repo `dev.sh` script writes the exact worktree registry path, desktop name, and deep-link scheme into `.context/notis-runtime.json`; any CLI launched below that active worktree consumes the lease directly. This keeps parallel worktrees isolated without relying on directory-name heuristics or requiring the caller to export routing variables manually. `dev.sh` also passes the freshly generated approved-test-user JWT to the auto-started `notis apps dev` process so it does not inherit a stale token from the shared CLI profile.
+The host publishes ephemeral source/runtime metadata through the global `~/.notis/app-dev-sessions.json` exchange, but each Electron process converts the authorized subset into its own in-memory mounts. Mounts are scoped by authenticated user and API base, never by a desktop display name, and are not remembered as offline projects. Prod, Beta, and source-development instances can therefore consume the same source simultaneously while keeping independent backend runtimes. `dev.sh --with-electron` registers its worktree in the same roots registry and relies on the same Electron reconciliation path; it has no worktree-specific app-session file or auto-start loop.
 
 The backend does not track active local dev sessions and is not the bundle proxy.
 
 ### What `notis apps dev` does
 
+Dev view bootstrap is intentionally paint-first. `/portal_views/get` returns a
+local bundle descriptor without waiting for external-provider discovery or a
+workspace-wide database catalogue. Provider discovery starts in the background
+and shares its in-flight result with the first runtime call. The Workspace
+sidebar primes each mounted app's manifest and compiles a development-only
+instant view host before its links appear. A click commits that host before the
+Next.js dev-router transition, loads the loopback bundle immediately, and lets
+the authenticated detail hydrate its context, database references, and tool
+results without replacing the runtime or remounting the app tree. Cheap,
+app-owned initial database reads hydrate that existing runtime; workspace-wide
+database discovery stays deferred.
+Runtime detail remains live by checking the app row and a compact database
+definition fingerprint before reusing the cache. Workspace database discovery
+stays on `/portal_views/runtime_query`, where the database fetch batches all
+accessible app owners into one query.
+Exact MCP and PostForMe tool grants are resolved with that runtime cache as
+well. Each authorized call still runs the normal view-policy, billing, scope,
+and metering checks, then dispatches the cached resolved descriptor directly;
+it does not rebuild the provider session or repeat MCP tool discovery for every
+call.
+
+Apps that know the exact upstream action for a generated MCP name may declare
+`toolBindings: [{ name: 'LOCAL_MCP_...', providerToolName: 'execute_sql' }]`
+next to `tools`. This lets the first call skip provider schema discovery while
+the public name remains the permission boundary. `useTool().call(args,
+{ dedupe: true })` is a separate, explicit optimization for identical
+idempotent reads only; mutations must omit it so every invocation executes.
+
 1. Detects the layout:
    - **Single app** - a `notis.config.ts` next to the command.
    - **Monorepo** - `apps/<name>/notis.config.ts` for one or more apps. Running `notis apps dev` at the root builds every app under `apps/` in parallel.
-2. For each app: reads `.notis/state.json` when present, verifies the linked installed app is accessible, and registers that app id as the dev-session target. If no link exists, the session remains local-only until the user installs or links it.
+2. For each app: reads the authenticated environment's `.notis/state.json` profile, verifies explicit links, auto-links one unique accessible exact canonical slug, and otherwise creates an isolated development runtime.
 3. Spawns `vite build --watch` per app so bundles rebuild on every file change.
 4. Runs a single HTTP server bound to `127.0.0.1:<port>`, with each app at a path prefix:
    - `GET /a/<slug>/bundle/app.js`
@@ -1865,10 +1975,10 @@ The backend does not track active local dev sessions and is not the bundle proxy
    - `GET /a/<slug>/events` - SSE push on rebuild
    - `GET /a/<slug>/snapshot` - current manifest, artifact files, and source files for Local development installs
    CORS allows Electron and loopback development origins.
-5. Registers and heartbeats active dev sessions in the runtime-selected registry. Published CLI runs use `~/.notis/app-dev-sessions.json`; active source worktrees provide their exact isolated path through the runtime lease. Every session names its target desktop.
-6. Reports the apps as serving, then watches the sibling acknowledgment registry. The CLI prints `Mounted in <target desktop>` only after the visible target Electron window has persisted exact `listed` acknowledgments for every app in the current run. It reports `Rendered in <target desktop>` separately after the first opened route commits app content. After the initial timeout it keeps serving and continues watching.
-7. Brings the targeted desktop to its Manage surface while the session mounts, then opens the canonical local app route after the exact mount acknowledgment. The mounted route includes the current session id as a harmless query parameter so macOS cannot suppress it as a duplicate URL from a previous launch. On macOS, installed Prod/Beta launches use a normal, attached `open -b <channel bundle id> <deep link>` process rather than relying on either the shared URL-scheme owner, display-name activation, or an orphaned launcher; each of those can fail to deliver the URL to an already-running app. Source worktrees use their unique deep-link scheme. Every active local app appears in that desktop's Local development sidebar group.
-8. The Local development context menu lets users install the current local snapshot to their account before any App Store submission, or update the existing backend app when the local app targets one.
+5. Registers and heartbeats active consumer mounts in the global registry, scoped by user and API base. No mount targets a desktop name.
+6. Every attached Desktop lists the mount independently. Sign-out and quit remove only that instance's consumer; registered roots survive.
+7. Root changes add or remove apps automatically. Source rebuilds emit one app-scoped SSE reload, and manifest changes also refresh sidebar identity and active route detail.
+8. The DEV-badged Workspace row menu lets users promote and install the current unpublished snapshot before any App Store submission, or update the existing backend app when the local app targets one.
 9. App detail and view pages for installed apps keep using the installed bundle. Local-development entries open the local harness and load the local bundle.
    The local bundle still assumes portal-owned runtime injection and shadow-root mounting; there is no window-global runtime contract.
 10. Each rebuild triggers an in-place reload of just the affected app, with no full page refresh.
@@ -1925,25 +2035,25 @@ These paths are not part of the target workflow and should be removed as impleme
 
 Use this list when the implementation is ready for verification.
 
-1. `notis apps dev <single-app-dir>` opens the Electron Portal and lists exactly one active local app in the Local development sidebar group.
-2. `notis apps dev <monorepo-root>` discovers all `apps/*/notis.config.ts` apps and lists all of them in the Electron Portal sidebar at once.
+1. Apps in the implicit default root and an explicitly registered root appear automatically after their first successful build.
+2. Discovery includes the root, direct children, and `apps/*`, but never unrelated nested trees or `node_modules`.
 3. Hosted/browser Portal does not show local dev sessions.
-4. Navigating from the Local development sidebar group into an app or view loads the local bundle instead of the installed bundle.
-5. The Local development context menu offers **Install** for unlinked sessions and **Update** for linked sessions, not direct App Store submission.
-6. When a linked backend app exists, the sidebar shows both entries: the live installed app and the local-development app.
+4. Navigating into a substituted Workspace entry or its views loads the local bundle instead of the installed bundle.
+5. The DEV-badged Workspace row offers **Install** for unpublished sessions and **Update** for linked sessions, not direct App Store submission.
+6. An explicit link or unique exact canonical-slug collision produces one substituted row in the installed app's existing Workspace slot; ambiguous slugs fail closed.
 7. Clicking **Update** for a linked local-development variant saves the current local snapshot to the linked backend app through `/cli_tools` and increments that installed app version.
-8. Clicking **Install** for a local-only app creates a backend app first, saves the current local snapshot through `/cli_tools`, writes the returned app id to `.notis/state.json`, and changes the running dev-session action to **Update**.
-9. Editing a file rebuilds the affected app and triggers an in-place reload without requiring a full page refresh.
-10. Stopping the CLI removes the active dev session after TTL and the installed app remains available through the live bundle.
-11. Restarting `notis apps dev` for a previously installed checkout remounts it with the same linked app id and shows **Update**.
-12. App Details **Mount for development** pulls source for the installed app, writes the link, starts `notis apps dev`, and shows the mounted session as linked.
+8. Clicking **Install** for an unpublished app atomically saves and promotes its development app in place, writes that same id to `.notis/state.json`, and changes the running dev-session action to **Update**.
+9. Editing a file rebuilds and reloads only that app in every attached Desktop; a failed rebuild retains the last successful bundle.
+10. Creating and deleting a valid app updates every attached sidebar; deletion restores a substituted installed row.
+11. Restarting Desktop preserves roots and profile-scoped links, and remounts discovered source automatically.
+12. `notis apps roots remove <folder>` removes its mounts from every instance while leaving other roots and consumers intact.
 13. Non-loopback bundle origins are rejected.
 14. One user cannot see or activate another user's local dev sessions.
-15. A stale nonce or acknowledgment from a previous `apps dev` run never produces `Mounted in <target desktop>`.
-16. A normal CLI run targets the active profile's Notis or Notis Beta desktop, while an active source-worktree run targets only the desktop instance named by its runtime lease.
-17. The CLI distinguishes serving, mounted, and rendered; it warns without stopping the dev server when the desktop has not acknowledged the session and reports each later transition independently.
-18. Installed and Local development app rows use the app name and icon, link to the default route, and nest every route beneath them, including that default route.
-19. Collapsing the main Portal sidebar temporarily closes the Workspace and Local development sections in rail mode; reopening restores each section's saved open or closed preference.
+15. A stale host lock, consumer lease, or mount record from a previous process never creates a duplicate host or a visible Workspace row.
+16. Prod, Beta, and source-development Desktop instances can mount the same source simultaneously with independent authenticated runtimes.
+17. Automatic mounting never adds capability grants: existing grants are reused and restricted capabilities remain denied until approved.
+18. Installed, substituted, and unpublished Workspace rows use the app name and icon, link to the default route, and nest every route beneath them, including that default route.
+19. Collapsing the main Portal sidebar temporarily closes the Workspace section in rail mode; reopening restores its saved open or closed preference.
 
 ---
 
@@ -2014,7 +2124,7 @@ When agents encounter older app instructions, prefer the current platform model 
 1. **Build validation**: `notis apps build` must succeed without errors.
 2. **Route smoke validation**: `notis apps verify` must render every route in the stub harness without runtime crashes.
 3. **Project health check**: `notis apps doctor` shows problems/warnings.
-4. **Local development acceptance**: `notis apps dev` must name the target desktop and report `Mounted in <target desktop>` after the visible matching Electron window validates the exact session/app/slug/nonce `listed` acknowledgment from the final Local development sidebar model. UI/runtime acceptance additionally requires `Rendered in <target desktop>`, which is emitted only after the local route commits app content inside the shadow root.
+4. **Local development acceptance**: `notis apps dev [folder]` registers the root. Verify `notis apps roots list`, then verify every signed-in Desktop instance independently shows one DEV-badged Workspace row, renders the default route, and receives a live source edit. Restart Desktop to prove roots persist; unregister the root to prove every instance detaches it.
 5. **Post-deploy verification**: Verify the deployed bundle via `/portal_views/get` -> `runtime_descriptor.bundle.js_url`. The signed bundle URL is the most reliable browser check in dev because it bypasses flaky local auth injection while still exercising the real runtime bridge, tool calls, and referenced databases.
 
 ---
