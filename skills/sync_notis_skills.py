@@ -61,7 +61,7 @@ DEFAULT_OUR_SKILLS = {
     name
     # notis-desktop-use is intentionally NOT default: experimental, opt-in,
     # and additionally gated by the desktop_control entitlement.
-    for name in ("notis-apps", "notis-automation", "notis-browser-control", "notis-cli", "notis-query")
+    for name in ("notis-apps", "notis-automation", "notis-browser-control", "notis-cli", "notis-query", "notis-reports")
     if name in OUR_SKILLS
 }
 ANTHROPICS_SKILL_NAMES = ["docx", "pdf", "pptx", "xlsx"]

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Notis Reports"
+  short_description: "Create flexible native interactive Notis reports"
+  default_prompt: "Create a native interactive report document from this work."
