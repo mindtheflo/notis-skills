@@ -664,7 +664,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 notis apps dev
 ```
 
-This command permanently registers the current folder as a development root and connects it to the shared host. Every signed-in Electron instance discovers valid apps automatically and shows each once in **Workspace** with a compact `DEV` badge, replacing its installed row in place or appearing at the end when unpublished.
+This command permanently registers the current folder as a development root and connects it to the shared host. Every signed-in Electron instance discovers valid apps automatically. Unpublished apps appear once in **Workspace** with a compact `DEV` badge; linked apps replace their installed row only when local `notisAppVersion` is strictly greater than the installed release.
 
 > **This is where a build request finishes.** The expected endpoint is a working app in its DEV-badged **Workspace** row — *not* a deployed app. The root registration survives the command and Desktop restart; no terminal must remain open.
 >
@@ -1802,11 +1802,11 @@ notis apps deploy
 
 ## Notis Apps Local Development
 
-Notis Desktop owns one automatic, machine-local development workflow. `notis apps dev [folder]` registers a root permanently; after that, launching any signed-in Prod, Beta, or source-development Desktop discovers and mounts valid apps without a sidebar action or a terminal process that must be kept alive.
+Notis Desktop owns one automatic, machine-local development workflow. `notis apps dev [folder]` registers a root permanently; after that, launching any signed-in Prod, Beta, or source-development Desktop discovers valid apps without a sidebar action or a terminal process that must be kept alive. Unpublished apps mount automatically. A linked app replaces its installed Workspace app only when the local manifest's semver `app.release_version` is strictly greater than the installed manifest's version; equal, lower, missing, or invalid local versions keep serving the installed online bundle.
 
 - one persistent roots registry, with `~/.notis/apps` always included
 - one real host UI: the Notis Portal
-- one sidebar entry per app: active source **replaces its installed app's Workspace entry in place** (same slot, compact `DEV` badge); genuinely new source appears once at the end
+- one sidebar entry per app: strictly newer active source **replaces its installed app's Workspace entry in place** (same slot, compact `DEV` badge); equal or stale source stays online, and genuinely new source appears once at the end
 - one loopback development host per macOS user, one build watcher per discovered app, and ephemeral authenticated consumers per Desktop instance
 - no mock portal, no mock-runtime dev mode, no `run dev`, no preview-only side path
 
@@ -1843,9 +1843,9 @@ The CLI should then:
 
 The Portal should then:
 
-1. Show every active local app in **Workspace** with a `DEV` badge, substituting a linked installed row in place and appending an unpublished row.
+1. Show every eligible active local app in **Workspace** with a `DEV` badge, substituting a linked installed row in place only when local `app.release_version` is strictly greater and appending an unpublished row.
 2. Keep installed/live apps visible as normal installed apps.
-3. Substitute the local-development variant into the installed app's single canonical row when an active mount targets it by id or unique exact slug.
+3. Substitute the local-development variant into the installed app's single canonical row when an active mount targets it by id or unique exact slug **and** the local semver is strictly greater than the installed release.
 4. Use the local bundle only while that substituted mount is active.
 5. Fall back to only the installed bundle when the local session ends.
 6. Never persist sidebar visibility acknowledgments or target a particular Desktop instance.
@@ -1896,6 +1896,7 @@ Button and CLI behavior follow that link:
 
 - **Unlinked mounted dev session**: Portal action is **Install**; CLI first-install flow is `notis apps deploy`. Both surfaces atomically save and promote the existing dev app, then link the checkout and active session to that same id.
 - **Linked mounted dev session**: Portal action is **Update**; CLI flow is `notis apps deploy` or `notis apps deploy --app-id <app-id>`. It must update the linked installed app rather than creating another app.
+- **Linked source at an equal or lower release**: the session may keep building and watching, but Portal serves the installed online row and bundle. Preserve any local edits, run `notis apps pull` to fetch the latest installed source at the same release, then increment `package.json` `notisAppVersion` before `notis apps dev` to make the local source eligible to substitute.
 - **Unique exact-slug match**: the CLI persists the match for the authenticated profile and Portal substitutes one row in place. Ambiguous matches fail closed.
 - **Source disappears or its root is unregistered**: every consumer detaches the local mount; the installed row returns in its saved position when one exists.
 - **Desktop signs out or quits**: only that consumer lease is removed. Other Prod, Beta, and source-development instances remain mounted.
@@ -1941,7 +1942,7 @@ Update behavior depends on whether the local app has a backend target:
 
 - If the local dev session targets an existing backend app by linked id, **Update** writes the latest local snapshot to that existing backend app and increments its installed version.
 - If the local app has no backend target, **Install** first registers a backend app for the user's account, saves the local snapshot into that new app record, then persists the returned app id in that authenticated environment's `.notis/state.json` profile and refreshes the active mount.
-- The canonical Workspace entry is replaced in place by local source. There is never a second `DEV` row for the same installed app.
+- When the linked local release is strictly newer, the canonical Workspace entry is replaced in place by local source. Equal or stale source leaves the online entry unchanged, and there is never a second `DEV` row for the same installed app.
 
 Electron and the shared host are responsible for:
 
@@ -2000,7 +2001,7 @@ idempotent reads only; mutations must omit it so every invocation executes.
 6. Every attached Desktop lists the mount independently. Sign-out and quit remove only that instance's consumer; registered roots survive.
 7. Root changes add or remove apps automatically. Source rebuilds emit one app-scoped SSE reload, and manifest changes also refresh sidebar identity and active route detail.
 8. The DEV-badged Workspace row menu lets users promote and install the current unpublished snapshot before any App Store submission, or update the existing backend app when the local app targets one.
-9. App detail and view pages for installed apps keep using the installed bundle. Local-development entries open the local harness and load the local bundle.
+9. App detail and view pages for installed apps keep using the installed bundle unless the linked local `app.release_version` is strictly greater. Eligible local-development entries open the local harness and load the local bundle.
    The local bundle still assumes portal-owned runtime injection and shadow-root mounting; there is no window-global runtime contract.
 10. Each rebuild triggers an in-place reload of just the affected app, with no full page refresh.
 
@@ -2011,9 +2012,11 @@ Every `notis apps deploy` writes the runnable bundle to `app-code` and the edita
 To edit an app locally from a terminal:
 
 ```bash
+# Preserve any local edits before refreshing this directory.
 notis apps pull <app-id> [dir]
 cd <dir>
 npm install
+# Increment package.json notisAppVersion above the pulled release.
 notis apps dev
 notis apps build
 notis apps deploy
@@ -2059,13 +2062,13 @@ Use this list when the implementation is ready for verification.
 1. Apps in the implicit default root and an explicitly registered root appear automatically after their first successful build.
 2. Discovery includes the root, direct children, and `apps/*`, but never unrelated nested trees or `node_modules`.
 3. Hosted/browser Portal does not show local dev sessions.
-4. Navigating into a substituted Workspace entry or its views loads the local bundle instead of the installed bundle.
+4. Navigating into an eligible substituted Workspace entry or its views loads the local bundle instead of the installed bundle; equal, lower, missing, or invalid local release versions keep the online bundle.
 5. The DEV-badged Workspace row offers **Install** for unpublished sessions and **Update** for linked sessions, not direct App Store submission.
-6. An explicit link or unique exact canonical-slug collision produces one substituted row in the installed app's existing Workspace slot; ambiguous slugs fail closed.
+6. An explicit link or unique exact canonical-slug collision with a strictly newer local release produces one substituted row in the installed app's existing Workspace slot; equal or older local releases stay online, and ambiguous slugs fail closed.
 7. Clicking **Update** for a linked local-development variant saves the current local snapshot to the linked backend app through `/cli_tools` and increments that installed app version.
 8. Clicking **Install** for an unpublished app atomically saves and promotes its development app in place, writes that same id to `.notis/state.json`, and changes the running dev-session action to **Update**.
 9. Editing a file rebuilds and reloads only that app in every attached Desktop; a failed rebuild retains the last successful bundle.
-10. Creating and deleting a valid app updates every attached sidebar; deletion restores a substituted installed row.
+10. Creating and deleting a valid app updates every attached sidebar; deletion restores any previously substituted installed row.
 11. Restarting Desktop preserves roots and profile-scoped links, and remounts discovered source automatically.
 12. `notis apps roots remove <folder>` removes its mounts from every instance while leaving other roots and consumers intact.
 13. Non-loopback bundle origins are rejected.
@@ -2145,7 +2148,7 @@ When agents encounter older app instructions, prefer the current platform model 
 1. **Build validation**: `notis apps build` must succeed without errors.
 2. **Route smoke validation**: `notis apps verify` must render every route in the stub harness without runtime crashes.
 3. **Project health check**: `notis apps doctor` shows problems/warnings.
-4. **Local development acceptance**: `notis apps dev [folder]` registers the root. Verify `notis apps roots list`, then verify every signed-in Desktop instance independently shows one DEV-badged Workspace row, renders the default route, and receives a live source edit. Restart Desktop to prove roots persist; unregister the root to prove every instance detaches it.
+4. **Local development acceptance**: `notis apps dev [folder]` registers the root. Verify `notis apps roots list`, then verify every signed-in Desktop instance independently. An unpublished app shows one DEV-badged Workspace row. A linked app does so only when local `notisAppVersion` is strictly greater than installed `release_version`; equal or lower keeps the online bundle. For an eligible app, render the default route and prove it receives a live source edit. Restart Desktop to prove roots persist; unregister the root to prove every instance detaches it.
 5. **Post-deploy verification**: Verify the deployed bundle via `/portal_views/get` -> `runtime_descriptor.bundle.js_url`. The signed bundle URL is the most reliable browser check in dev because it bypasses flaky local auth injection while still exercising the real runtime bridge, tool calls, and referenced databases.
 
 ---
