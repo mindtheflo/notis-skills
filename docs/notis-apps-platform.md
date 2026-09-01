@@ -974,6 +974,29 @@ notis apps pull <app-id> [dir]
 Pulled source includes the same files that were deployed for that installed app version: app code, `notis.config.ts`, and `metadata/` listing assets. See [Forking an existing app](#forking-an-existing-app-1).
 Current CLI deploys also persist lockfiles so pulled checkouts can reproduce the original install. Older apps that predate source snapshots must be redeployed once before `notis apps pull` can recreate an editable checkout.
 
+#### App-owned skill source and materializations
+
+An app-owned skill has one editable definition: the skill directory declared by
+the app's `notis.config.ts`. For a public Store app, the reviewed canonical copy
+lives under `apps/<slug>/skills/<skill>/` in `mindtheflo/notis-apps`. A linked
+checkout produced by `notis apps pull` is an editable snapshot of one deployed
+version; after changing it, build and deploy that checkout, then publish the
+Store update so the registry becomes canonical for the new version.
+
+The other copies are generated materializations, not additional sources:
+
+- `app-source/{app_id}/v{version}/` is the immutable deployed source snapshot.
+- `/vercel/sandbox/.notis/skills/<skill>/` is the account's synchronized runtime
+  materialization of the app bundle.
+- Claude, Codex, and other local-agent skill directories are symlinks or sync
+  targets rooted in that account materialization.
+
+Never patch a runtime materialization or add the same workflow to an unrelated
+development skill to compensate for a stale sync. Edit the linked app source,
+deploy it, publish the reviewed Store source when applicable, and run skill sync.
+This keeps executable scripts, skill instructions, and their tests in one app
+package while allowing each agent harness to receive its generated copy.
+
 ---
 
 ## App Contract
