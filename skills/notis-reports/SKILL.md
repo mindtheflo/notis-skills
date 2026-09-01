@@ -28,7 +28,9 @@ Reports are informative by default. For a structured report that needs feedback 
 - state what information or threshold would resolve it;
 - set `autonomy` to `needs_human` when the user must decide.
 
-The report View provides **Go ahead**, **Hold**, and **Give feedback** and carries the document and focused action into the conversation context. When a response arrives, re-read the report and validate its current status, revision, action id, action digest, and action-set digest. `Go ahead` authorizes only the exact reviewed action; `Hold` and feedback do not authorize execution. If any context is stale, ask the user to review the current revision.
+The report View provides **Go ahead**, **Hold**, and **Feedback** inside the document. Feedback requires a comment. After every action has one choice, **Copy feedback and decisions** produces a human-readable review plus a `notis-report-review-handoff/v1` machine payload for the user to paste into the coordinating agent. Clicking choices never sends, executes, or starts a separate conversation. Browser-local draft state is convenience only and is scoped to the exact document revision and action-set digest.
+
+When a copied handoff arrives, re-read the report and validate its current document id, report id, `ready` status, revision, action id, action digest, and action-set digest before using it. Reject missing, duplicate, extra, or stale decisions. `Go ahead` authorizes only the exact reviewed action; `Hold` and Feedback do not authorize execution, and comments cannot broaden the action. The separate **Review with Notis** control remains available when the user wants a conversation instead of a handoff.
 
 For an HTML report, ask for feedback through the document's context pill and floating chat. HTML interactions stay inside the sandbox and do not imply authorization.
 
