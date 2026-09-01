@@ -559,6 +559,8 @@ Use `LOCAL_NOTIS_DATABASE_LIST_DATABASES` for the catalog/list pane and `LOCAL_N
 
 Routes are the only canonical navigation contract for Notis apps. Every configured route must declare an explicit `slug`, and nested static navigation uses `parentSlug`.
 
+Routes that represent app-owned resources outside Notis collections can opt into exact resource links with `resourceDeepLinks: true`. The canonical shape is `/apps/<app>/<view>?resource=<encoded-resource-id>`. The Portal exposes the decoded value as `useNotis().resourceId`, and apps can navigate with `toRoute('/inbox', { resourceId })`. When an opted-in view publishes an active resource, the host adds its exact Notis URL as `active_resource.view_url`; the app's own `active_resource.url` remains available for an external source or preview. Unknown identifiers must fall back safely inside the view. Collection-backed navigation remains `?item=` and is unchanged.
+
 The Portal renders the app itself as the parent sidebar row, using the app name
 and icon. Expanding that row reveals every configured route, including the
 default route. Clicking the app name opens the route marked `default: true`, so
@@ -1494,9 +1496,9 @@ Explicit tool declarations and `useTool` calls should use canonical tool names s
 | `useTool<TArgs, TResult>(name)` | Call a platform tool; identical idempotent reads may opt into in-flight deduping with `call(args, { dedupe: true })` | `const { call } = useTool<{ database_slug: string }, unknown>('LOCAL_NOTIS_DATABASE_GET_DATABASE')` |
 | `useDatabaseSubscription(slug, opts?)` | Query an app-owned database and refetch it when its rows change | `const { rows, live, refetch } = useDatabaseSubscription('workspaces')` |
 | `useTools()` | List available tools | `const { tools } = useTools()` |
-| `useNotis()` | Access app, route, generic context, and readiness | `const { app, route, context, ready } = useNotis()` |
+| `useNotis()` | Access app, route, selected collection item, optional exact resource id, and readiness | `const { app, route, collectionItem, resourceId, ready } = useNotis()` |
 | `useHandover()` | Hand a piece of work to the Notis manager chat | `const { handover, pending, available } = useHandover()` |
-| `useNotisNavigation()` | Navigate between routes/documents | `const { toRoute, toDocument, toApp } = useNotisNavigation()` |
+| `useNotisNavigation()` | Navigate between routes/documents, optionally preserving an exact resource | `toRoute('/inbox', { resourceId: post.id })` |
 | `useTopBarSearch(opts)` | Bind the current view to the Portal-owned top-bar search input | `const { setLoading } = useTopBarSearch({ value, onChange })` |
 | `useCloudComputer()` | Read a few facts about the user's cloud computer | `const { facts } = useCloudComputer()` |
 | `useBackend()` | Make direct backend requests | `const { request } = useBackend()` |
