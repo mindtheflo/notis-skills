@@ -1810,6 +1810,15 @@ Notis Desktop owns one automatic, machine-local development workflow. `notis app
 
 Local app development requires Electron; hosted/browser Portal never consumes loopback apps. Quitting or signing out detaches only that Desktop instance. Registered roots remain, and the shared host exits after its final consumer. The host also reads the ephemeral consumer leases, so an instance that crashes or is force-quit expires without leaving an orphaned host. A failed rebuild keeps serving the last successful bundle, reports diagnostics outside the sidebar, and retries on the next filesystem change. There are no offline rows, play icons, manual-start actions, or stop-session actions.
 
+Each Vite watcher runs in its own process group. Host shutdown terminates the
+whole npm/Vite/esbuild tree, including descendants left behind by an exited npm
+wrapper, so repeated Desktop launches cannot accumulate orphan watchers. Source
+development builds also append 30-second process and system-memory snapshots to
+`~/.notis/app-dev-diagnostics.jsonl`, rotating at 20 MB. The JSONL file survives
+an Electron or machine crash and records the host PID, host RSS/heap, free
+system memory, and the PID plus total process-tree RSS for every app watcher;
+packaged Desktop builds do not create it.
+
 ### Target developer experience
 
 Register any folder with `notis apps dev [folder]`. Discovery is deliberately bounded to:
