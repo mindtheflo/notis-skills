@@ -1669,6 +1669,47 @@ Read it the way it is meant:
 - **Facts are cached per user for a few minutes.** An app re-renders far more often than a sign-in changes. `refresh()` re-reads, but it can still see the cached answer, so an app that just drove a sign-in itself should trust what it did and not wait for the facts to catch up.
 - **Only whitelisted fields cross the bridge.** Sandbox ids, owner tokens, provider errors and the raw `gh` output stay server-side.
 
+#### Cloud worktree dev URLs
+
+The Conductor app can run a repository's recorded dev command inside any of its
+worktrees and open the exact authenticated Portal entry point. A user sandbox
+has four fixed public Vercel routes, on ports `3000`, `3010`, `3020`, and
+`3030`; those are the full route list because `Sandbox.update({ ports })`
+replaces rather than extends the existing list. The authenticated Portal bridge
+owns that list and returns each port with its `https://…vercel.run` origin.
+
+Every sandbox command receives the compact `NOTIS_CONDUCTOR_DEV_ENDPOINTS`
+port-to-origin map plus a backend-signed `NOTIS_CONDUCTOR_DEV_CONTEXT_JWT` that
+binds the sandbox owner to those exact four origins. `dev.sh` atomically leases
+one entry per worktree under
+`/vercel/sandbox/.notis/workspaces/dev-port-leases.json`, exports the familiar
+`CONDUCTOR_PORT` plus `CONDUCTOR_PUBLIC_URL`, and treats that port as strict: a
+public slot can never silently fall back to an unpublished local port. The
+remaining nine ports in the block keep the existing portal/backend/Electron/
+docs layout internal to the sandbox. Dead process leases are reclaimed; a live
+workspace keeps its slot until its dev process exits.
+
+After the Portal answers its local readiness probe, the worktree writes
+mode-`0600` artifacts:
+
+- `.context/portal-entry-link.txt` — the complete stable auto-auth entry URL;
+- `.context/conductor-dev.env` — shell exports for `CONDUCTOR_PORT`,
+  `CONDUCTOR_PUBLIC_URL`, and `CONDUCTOR_PORTAL_ENTRY_URL`.
+
+The URL is not reconstructed from a port: its query contains a persistent,
+worktree-private bearer secret. `dev.sh` passes that secret only to the Portal
+process; it is not exported globally or supplied to sibling services. The
+Portal route verifies that secret, the backend-signed owner, and
+the request's exact assigned origin. It resolves the owner's canonical email
+from `user_primary_emails`, then mints a fresh one-time Supabase link on each
+browser open. This keeps
+one identical PR/comment URL usable across multiple reviewers without reusing a
+magic link. Conductor's `workspace.sh dev-status` and `dev-url` validate the URL
+and perform a non-consuming `HEAD` probe against its public route. `dev-stop`
+removes the published auth artifacts while the `dev.sh` cleanup releases the
+public slot. Four parallel worktrees are supported; a fifth fails closed until
+one is stopped.
+
 ### Collection interactions
 
 `useCollectionInteractions` is the canonical state machine shared by Notis Manager and apps. Import it from `@notis/sdk/interactions` when an entry point only needs interaction behavior. `NotisProvider` installs the scoped `ShortcutProvider`; standalone surfaces may install it directly.
