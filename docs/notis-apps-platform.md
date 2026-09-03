@@ -1827,6 +1827,15 @@ notis apps deploy
 
 Notis Desktop owns one automatic, machine-local development workflow. `notis apps dev [folder]` registers a root permanently; after that, launching any signed-in Prod, Beta, or source-development Desktop discovers valid apps without a sidebar action or a terminal process that must be kept alive. Unpublished apps mount automatically. A linked app replaces its installed Workspace app only when the local manifest's semver `app.release_version` is strictly greater than the installed manifest's version; equal, lower, missing, or invalid local versions keep serving the installed online bundle.
 
+The shared source host starts one watcher per canonical app before registering
+the mounts sequentially. Desktop treats a partial mount set as active while
+registration keeps making progress and allows five minutes without a newly
+published mount before retrying it. Desktop routes terminal signals through its
+normal asynchronous quit cleanup, and the CLI installs its SIGINT/SIGTERM
+cleanup before registration begins. A retry or Desktop shutdown therefore
+terminates every watcher process group even when a backend registration is
+still pending.
+
 - one persistent roots registry, with `~/.notis/apps` always included
 - one real host UI: the Notis Portal
 - one sidebar entry per app: strictly newer active source **replaces its installed app's Workspace entry in place** (same slot, compact `DEV` badge); equal or stale source stays online, and genuinely new source appears once at the end
