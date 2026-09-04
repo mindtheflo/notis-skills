@@ -324,7 +324,7 @@ Use `.context/terminal.txt` as the canonical source for:
 Auth-link files:
 
 - `.context/portal-entry-link.txt` - latest scanner-safe Portal token-hash link for `parisetflorian+dev@gmail.com`.
-- `.context/electron-dev-login-url.txt` - latest pre-consumed `/auth/confirm` session URL for Electron. By default this uses `parisetflorian+dev@gmail.com`; `./dev.sh --electron-user-id <id> --electron-user-email <email>` can select another Electron login user.
+- `.context/electron-dev-login-url.txt` - latest pre-consumed `/auth/confirm` session URL for Electron. Its auth redirect always targets the worktree's local Portal origin, even when the browser entry link uses ngrok or a public Conductor route. By default this uses `parisetflorian+dev@gmail.com`; `./dev.sh --electron-user-id <id> --electron-user-email <email>` can select another Electron login user.
 - `.context/dev-portal-auth.json` - structured dev-user payload with both URLs and metadata.
 
 When `DEV_PERSONAL_USER_ID` and `DEV_PERSONAL_USER_EMAIL` are set, `dev.sh` also prints a second browser magic link in the terminal log.
