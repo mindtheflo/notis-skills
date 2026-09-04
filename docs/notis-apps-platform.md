@@ -415,10 +415,12 @@ The simplest way to create an app. The wizard sends your request to the Notis as
    - Lists published Store apps with `notis apps scaffolds list` (optionally `--search <term>`), then runs `notis apps init <name> --from <slug>` to download that app's source from the public registry when one fits, OR
    - Runs plain `notis apps init <name>` for the empty scaffold, OR
    - Pulls source from one of the user's already installed apps with `notis apps pull <app-id>`.
-5. **The agent fills in `notis.config.ts`** including manifest listing metadata (tagline and categories), writes the root `CHANGELOG.md`, and runs `notis apps screenshot` to generate `metadata/screenshot-N.png` so it's ready for publish later.
-6. **The agent verifies and deploys** with `notis apps build`, `notis apps verify`, `notis apps deploy`. In this hosted path the sandbox has no desktop-local DEV session, so deploying to your Portal is the only way to preview — that is why deploy is part of the flow here. (Contrast with **Path 2**, where a local desktop dev session exists, deploy is user-gated, and the agent hands off for you to test the DEV-badged Workspace row first.)
-7. **You see progress** in real time and can refine requirements conversationally.
-8. **The app appears** in your Portal, ready to use.
+5. **The agent fills in `notis.config.ts` and tests locally** including the stable canonical name and listing metadata, writes `CHANGELOG.md`, bootstraps Agent Browser, generates screenshots, then runs `notis apps build` and automated `notis apps verify`. A failed test stops before app creation, database mutation, or deployment.
+6. **The agent gates mutation and establishes the exact app identity after tests pass.** For preview-only, read-only, or no-deploy requests it stops here without app create/link, database mutation, deploy, or post-deploy checks. Otherwise, existing edits retain the id linked by `notis apps pull <app-id>` after a metadata-only (`include_documents: false`) app-detail read validates edit permission and scope without materializing databases. A new app defaults to personal scope unless the user explicitly requests team scope, then compares profile state plus `notis apps list --json` with the canonical config `name`. Every exact-slug row, including a development row, is a collision check. It links only one editable non-development match after the same non-materializing detail read proves scope, and fails on multiple matches or scope mismatch. On zero matches it first proves that backend-equivalent canonicalization of the config `title` equals the config `name`. For personal scope it runs `notis apps create "<canonical-config-title>" . --json` exactly once. For explicit team scope it discovers and inspects `LOCAL_NOTIS_CREATE_APP`, dry-runs it, executes it exactly once with team visibility and verified current team scope, validates the returned id/slug/team scope/edit permission, and links that exact id. It stops for read-only reconciliation rather than retrying an outcome-unknown create.
+7. **The agent reconciles app resources safely.** It reads and compares every declared database first, creates only missing schemas against the exact app id, and updates only changed schemas by exact `database_id` after proving `owner_app_id` matches. Only backward-compatible schema expansion may precede deployment; breaking changes use a staged expand-contract flow. It reads every result back before continuing.
+8. **The agent deploys and proves the result.** It runs `notis apps deploy`, reads back the matching id/version and `portal_url` with `notis apps list --json`, runs live verification, and returns that exact Portal URL. In this hosted path the sandbox has no desktop-local DEV session, so Workspace deployment is the default for create and edit requests unless the user explicitly asks for preview-only, read-only, or no deployment. Inspection, review, and diagnosis stay read-only. (Contrast with **Path 2**, where a local desktop dev session exists, deploy is user-gated, and the agent hands off for you to test the DEV-badged Workspace row first.)
+9. **You see progress** in real time and can refine requirements conversationally.
+10. **The app appears** in your Portal, ready to use.
 
 #### What you can ask
 
@@ -454,6 +456,21 @@ The sandbox persists across conversation turns. You can:
 - Request new databases, routes, or features
 - Ask the agent to fix bugs or change the design
 - Switch to a different app in the same conversation
+
+Every create or edit request on this hosted path includes Workspace deployment
+unless the user explicitly requests preview-only, read-only, or no deployment.
+Inspection, review, and diagnosis do not authorize mutations. An explicit
+opt-out stops after build/verify with no app create/link or database mutation.
+Otherwise the agent skips `apps dev`; bootstraps Agent Browser; runs `apps build`
+and automated `apps verify`; then resolves one exact profile-scoped identity and safely reconciles
+only missing or changed app-owned database schemas. It deploys only after the
+tests and resource checks pass, reads back the exact app id/version, runs live
+verification, and returns the exact Portal URL. A definite pre-commit rejection is reported
+as not deployed; a timeout or incomplete mutation response is deployment status
+unknown; a confirmed deploy followed by failed readback or live verification is
+deployed but unverified. Outcome-unknown mutations are never retried blindly.
+This standing authorization is limited to `apps deploy`; `apps publish
+--confirm-ready` and Store submission remain separately user-gated.
 
 ---
 
@@ -848,11 +865,16 @@ The agent modifies the code in your sandbox session and redeploys.
    ```bash
    notis apps dev    # Live development in place of the app's Workspace entry (DEV badge)
    notis apps build  # Build artifact
+   notis apps verify # Automated route/render verification
    ```
-3. Deploy the update:
+3. Test the DEV-badged app in your Workspace. Deploy only after the user
+   explicitly asks; use the existing development/linked identity directly and
+   do not run `apps create`:
    ```bash
    notis apps deploy
    ```
+
+This is the local approval gate described in [Path 2](#path-2-build-with-your-local-code-agent-cursor-claude-code-terminal).
 
 Each deploy increments the app version. The Portal automatically loads the latest version.
 
@@ -2192,6 +2214,7 @@ These rules are the canonical platform assumptions:
 8. **`notis apps deploy` is not store publishing** -- it updates the linked installed app and source snapshot only; review starts separately from App Details or `apps publish --confirm-ready` after explicit user approval.
 9. **Portal-owned sidebar trees are structural** -- when a route declares `collection.sidebar`, the portal owns that sidebar. Agents must not replace it with custom in-app navigation as a workaround.
 10. **Portal globals are unsupported** -- apps must not rely on `window.__NOTIS_RUNTIME__`, portal DOM hooks, or global DOM portals such as `createPortal(..., document.body)`.
+11. **Execution environment controls the deploy gate** -- hosted sandbox app creates and edits skip `apps dev`, bootstrap automated browser verification, build and verify before remote mutation, establish exact identity/resources, and deploy unless the user explicitly requests preview-only, read-only, or no deployment. Inspection, review, and diagnosis remain read-only. Local Desktop work stops at the DEV handoff until the user asks to deploy, then promotes the existing development identity directly. Neither path implies Store approval.
 
 ### Unsupported shortcuts
 
