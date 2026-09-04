@@ -71,6 +71,18 @@ app deletes its databases and their documents. Team/Public publication
 snapshots remain manifest-only: interactive runtime databases and their
 documents are never copied into a store listing.
 
+Skills and automations use one canonical association contract: a resource's
+`owner_app_id` and its owning app's `bundled_skill_ids` or
+`bundled_automation_ids` membership change in the same database transaction.
+Interactive moves use `/portal_apps/resource-association`; callers must not
+edit only a bundle array because that leaves collection filters and App Details
+with conflicting ownership. Resource deletes and skill tombstones unlink bundle
+membership through database triggers in that same transaction. Store
+customization overlays are derived afterward with compare-and-swap retries; a
+derived-state warning must never make a committed association or deletion look
+like it failed. Persist associations against the installed app id, never an
+ephemeral DEV runtime identity.
+
 The right mental model is:
 
 ```
@@ -827,6 +839,7 @@ The Portal does **not** directly build app code. Source checkouts and dev server
 | `/portal_apps/create` | POST | Create an app |
 | `/portal_apps/update` | PATCH | Update app metadata (name, description, icon, **visibility**) |
 | `/portal_apps/bundle` | POST | Bundle skills/automations |
+| `/portal_apps/resource-association` | POST | Atomically move or unattach one skill/automation and reconcile both app bundle arrays |
 | `/portal_apps/update/apply` | POST | Apply a clean store update |
 | `/portal_apps/update/resolve` | POST | Start Notis-assisted store update conflict resolution |
 | `/portal_apps/update/reset` | POST | Reset store-installed app customizations |
@@ -1065,7 +1078,7 @@ defineNotisApp({
 
 During local development, starting the app upserts these source-owned skills onto the stable development app identity. Declare `devSlug` once in `notis.config.ts` and do not change it when the app's display name changes; this keeps every iteration attached to the same hidden development app. Development-app skills stay available inside that app runtime but are excluded from the global Skills page and desktop skill sync. Clicking onboarding refreshes the current `SKILL.md` from the loopback snapshot before opening chat, so skill edits can be tested without deploying or manually replacing a bundled skill. First deploy verifies that this dev-loop sync matches the source before promotion; later deploys perform the normal source-skill sync for the installed app.
 
-App-owned skills and automations remain visible on the global Skills and Automations pages, including resources attached to a current development app. Those rows are classified in a dedicated **Apps** filter category and carry an `App · <app name>` tag, rather than being mixed into the standalone `custom` skill or schedule/webhook automation categories. The list APIs derive that presentation metadata from `owner_app_id`. Desktop skill sync still excludes development-app skills so a local agent never installs both the development copy and the installed app copy.
+App-owned skills and automations remain visible on the global Skills and Automations pages, including resources attached to a current development app. Both pages keep an always-visible **App** filter with **All**, one pill per app, and **No app**; this filter is independent from the Skills **Source** dropdown and the Automations **Trigger** dropdown. App-owned rows carry an `App · <app name>` tag. The list APIs derive that presentation metadata from `owner_app_id`. Desktop skill sync still excludes development-app skills so a local agent never installs both the development copy and the installed app copy.
 
 #### Skills with supporting files
 
