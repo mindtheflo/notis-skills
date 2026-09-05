@@ -83,6 +83,19 @@ derived-state warning must never make a committed association or deletion look
 like it failed. Persist associations against the installed app id, never an
 ephemeral DEV runtime identity.
 
+App display names are presentation metadata, not identifiers. Local development
+uses the manifest's `app.title` when present; legacy lowercase machine names use
+the explicitly linked installed app's name, or readable spaced capitalization
+when unlinked. Preserve deliberate mixed casing and acronyms. Keep slugs, app IDs,
+and resource ownership unchanged when correcting a display name. The backend
+also resolves this presentation name when ensuring a development installation,
+so reconnecting an older local client does not persist its machine name again.
+Skills and Automations filters group a local session's backend identity with its
+Workspace representation. Separate apps stay separate: labels use Development,
+Archived, or Unavailable where applicable and numbered same-label copies, never
+raw slugs or UUIDs. Unavailable means the owner is absent from the loaded app list;
+it does not prove deletion. Only installed eligible apps remain move targets.
+
 The right mental model is:
 
 ```
