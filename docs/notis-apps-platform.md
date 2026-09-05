@@ -632,39 +632,20 @@ Rules:
 Create pages in `app/` using SDK hooks and scaffolded components:
 
 ```tsx
-// app/page.tsx
-'use client';
-import { useEffect, useState } from 'react';
-import { useTool } from '@notis/sdk';
+import { useDocuments, ViewSkeleton } from '@notis/sdk';
 import { Card } from '@/components/ui/card';
 
-type QueryTasksArgs = { database_id?: string; database_slug?: string; query: { page_size?: number } };
-type TaskDoc = { document_id?: string; id?: string; title?: string; properties?: Record<string, unknown> };
-type QueryTasksResult = { documents?: TaskDoc[] };
-
-export default function Dashboard() {
-  const queryTasks = useTool<QueryTasksArgs, QueryTasksResult>('LOCAL_NOTIS_DATABASE_QUERY');
-  const [documents, setDocuments] = useState<TaskDoc[]>([]);
-
-  useEffect(() => {
-    void queryTasks
-      .call({ database_id: 'tasks-db-id', query: { page_size: 25 } })
-      .then((result) => setDocuments(result.documents || []));
-  }, [queryTasks.call]);
-
-  if (queryTasks.loading) return <div>Loading...</div>;
-
-  return (
-    <div className="p-6 space-y-4">
-      <h1 className="text-2xl font-bold">Dashboard</h1>
-      {documents.map((doc) => (
-        <Card key={doc.id || doc.document_id} className="p-4">
-          <h3 className="font-medium">{doc.title || 'Untitled'}</h3>
-          <p className="text-muted-foreground">{String(doc.properties?.status || '')}</p>
-        </Card>
-      ))}
-    </div>
-  );
+export default function TasksPage() {
+  const tasks = useDocuments('tasks', { pageSize: 25 });
+  return <section className="space-y-4 p-6">
+    <h1 className="text-xl font-semibold">Tasks</h1>
+    {tasks.error && <p role="alert">{tasks.error.message} <button onClick={tasks.refetch}>Retry</button></p>}
+    {tasks.loading ? <ViewSkeleton variant="table" rows={5} /> : tasks.hasData ? (
+      tasks.documents.length ? tasks.documents.map((task) => (
+        <Card key={task.id} className="p-4"><h2>{task.title || 'Untitled'}</h2></Card>
+      )) : <p>No tasks yet.</p>
+    ) : null}
+  </section>;
 }
 ```
 
@@ -2302,3 +2283,26 @@ If the task is execution-oriented, then read this document first and use the `no
 If the code seems to disagree with this document, treat this file as the intended platform contract and verify the specific implementation detail before changing behavior.
 
 If a collection-tree sidebar appears missing, do not redesign the app around that absence. Keep `collection.sidebar` as the source of truth and treat the mismatch as a portal bug to investigate.
+
+
+## Instant-view lifecycle and cache ownership
+
+The authenticated layout retains at most three visited app shells. Unvisited pages are never mounted speculatively. Same-app navigation changes only the route export inside the existing shell; Store installations retain their sandboxed frame, nonce checks and scoped RPC boundary. Hidden shells cannot publish page context, claim top-bar search, or initiate navigation.
+
+`GET /portal_views/get?bootstrap=light` preserves authentication, entitlement, live app access checks, route/tool permissions, selected collection item ancestry, schemas and signed assets. It skips tool discovery and initial data queries. Omit the option for the legacy full bootstrap. `tools.read_cache_scope` shares reads only across routes with identical effective permissions; `access_hash` remains route-specific.
+
+App-view navigation uses the Next-integrated native History API, with synchronous client-shell selection; non-view routes still use normal router navigation. This avoids a competing RSC transition that can commit an old URL after the new view paints.
+
+Retained hosts keep a stable DOM order independently of their LRU order: moving an iframe in the DOM can recreate its browsing context. The isolated host receives theme state from its parent bridge and must never require local/session storage or `allow-same-origin`.
+
+The SDK cache reads successful snapshots synchronously, including empty arrays and null documents. `loading` denotes a missing initial response; `isFetching` also covers background refresh. Query keys include exact arguments. The host scopes caches by account/session, API environment, runtime app, bundle version and effective permissions. Query clients retain at most 100 idle entries each, 24 recent app/permission scopes; route detail and asset caches are bounded separately. Active subscriptions pin entries until detached. No persistent offline storage is introduced.
+
+Returning to a retained app after the default 30-second freshness window invalidates its mounted reads after paint, including reads inside a Store frame. Cached content stays visible while they refresh; retaining the shell must not bypass refresh merely because its hooks never remounted.
+
+Writes, realtime and explicit refresh advance generations, so neither the query cache nor transport deduplication may reuse a pre-invalidation response. Access loss and confirmed auth transitions permanently retire old clients and clear evaluated bundle state. Signed URL renewal updates transport without resetting a healthy shell or stylesheet; asset failure requests fresh authorized URLs. Stale bundle completions and old-route Store publishers cannot commit into the current destination.
+
+Shared local-dev host discovery events refresh app lists and authorized descriptors without retiring successful reads or evaluated shells. The affected app's own bundle reload or changed Electron session contract owns its runtime invalidation; unrelated rebuilds must not erase another app's cached view.
+
+Hover/focus prepares authorized destination descriptors and asset bytes without evaluating Store code in the Portal. App-owned `useQueryClient().prefetch` calls share a two-slot queue with host preparation, including isolated frames. Only small explicitly read-only requests qualify; full collections, provider sweeps, fan-out aggregates and mutations remain foreground actions.
+
+The canonical UI/authoring contract and cached-read examples live in [the shipped Notis apps skill](../server/skills/notis-apps/SKILL.md#instant-view-loading-contract-required). The CLI scaffold and bundled SDK source mirror that contract. Release the compatible host/SDK before deploying apps that rely on this behavior; this migration itself does not authorize package publication or deployment.
