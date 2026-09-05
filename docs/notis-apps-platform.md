@@ -2153,6 +2153,12 @@ notis apps dev
 
 Press `Ctrl-C` to stop the dev server and all Vite watch processes.
 
+Each build watcher runs beneath an IPC-connected supervisor. Abrupt CLI death
+disconnects IPC and stops the npm/Vite/esbuild process group, with a one-second
+forced termination fallback. Diagnostics and Desktop recovery continue to use
+the actual npm group PID and its existing ownership identity. Normal shutdown
+keeps the existing awaited process-group cleanup.
+
 ### Non-goals
 
 These paths are not part of the target workflow and should be removed as implementation completes:
