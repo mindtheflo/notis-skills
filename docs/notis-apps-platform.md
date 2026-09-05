@@ -233,7 +233,7 @@ This section covers local repo setup, environment files, dev-stack discovery, an
    This links the available `server/.env`, `portal/.env`, and `website/.env` files independently from the main checkout or another local worktree. Missing env files produce warnings without blocking setup, which is expected in Cloud Agent VMs. It then creates the Python virtual environment, installs server pip dependencies, and runs `npm install` in `portal`, `server/node-server`, `electron`, `website`, and `packages/cli`.
 2. Create `.env` files.
 3. Run `./dev.sh`.
-   This starts the Python backend, Next.js portal, and collaboration node-server in parallel with labeled log output.
+   This starts the Python backend and Python cron workers. Add `--with-portal` for browser app testing or `--with-electron` for desktop integration; see [stack tiers](development-workflow.md#stack-tiers).
 
 The full live terminal stream is written to `.context/terminal.txt`. The file is cleared on every `dev.sh` launch and deleted by `./archive.sh`.
 
@@ -289,22 +289,7 @@ If running `server/node-server` manually, its `.env` needs `ENV=dev`, `NODE_PORT
 
 ### Dev stack
 
-`./dev.sh` starts:
-
-- Python backend
-- Next.js portal
-- collaboration node-server from `server/node-server`
-
-The node-server inherits `server/.env`. `dev.sh` derives `NODE_SERVER_PORT` as `PORTAL_PORT + 4` by default, so it defaults to port 3004 when the portal is on 3000, kills any existing process already bound to that worktree port, and passes the resulting value as `NODE_PORT`.
-
-For local sandbox work, the backend is pointed at `http://localhost:<portal_port>/api/sandbox`.
-
-If you need to run the node-server manually:
-
-```bash
-cd server/node-server
-node node-server.js
-```
+See [Development Workflow: Stack Tiers](development-workflow.md#stack-tiers) for service selection, dependencies and resource usage. App browser and local sandbox-bridge tests require `--with-portal`; desktop app tests require `--with-electron`.
 
 ### Dynamic ports and auth links
 
@@ -337,12 +322,12 @@ Use `.context/terminal.txt` as the canonical source for:
 Auth-link files:
 
 - `.context/portal-entry-link.txt` - latest scanner-safe Portal token-hash link for `parisetflorian+dev@gmail.com`.
-- `.context/electron-dev-login-url.txt` - latest pre-consumed `/auth/confirm` session URL for Electron. Its auth redirect always targets the worktree's local Portal origin, even when the browser entry link uses ngrok or a public Conductor route. By default this uses `parisetflorian+dev@gmail.com`; `./dev.sh --electron-user-id <id> --electron-user-email <email>` can select another Electron login user.
+- `.context/electron-dev-login-url.txt` - latest pre-consumed `/auth/confirm` session URL for Electron. Its auth redirect always targets the worktree's local Portal origin, even when the browser entry link uses ngrok or a public Conductor route. By default this uses `parisetflorian+dev@gmail.com`; `./dev.sh --with-electron --electron-user-id <id> --electron-user-email <email>` can select another Electron login user.
 - `.context/dev-portal-auth.json` - structured dev-user payload with both URLs and metadata.
 
 When `DEV_PERSONAL_USER_ID` and `DEV_PERSONAL_USER_EMAIL` are set, `dev.sh` also prints a second browser magic link in the terminal log.
 
-The auth-link helper does not start the app. Start the local dev stack with `./dev.sh` first.
+The auth-link helper does not start the app. Start the local UI stack with `./dev.sh --with-portal` first.
 
 Useful commands:
 
@@ -357,7 +342,7 @@ cat .context/portal-entry-link.txt
 cat .context/electron-dev-login-url.txt
 cat .context/dev-portal-auth.json
 ./dev.sh --refresh-portal-entry-link
-./dev.sh --electron-user-id <id> --electron-user-email <email>
+./dev.sh --with-electron --electron-user-id <id> --electron-user-email <email>
 ./dev.sh --restart-running-dev-session
 tail -n 200 .context/terminal.txt
 ```
@@ -366,7 +351,7 @@ tail -n 200 .context/terminal.txt
 
 `DEV_PERSONAL_USER_ID=<id> DEV_PERSONAL_USER_EMAIL=<email> ./dev.sh --refresh-portal-entry-link` prints an optional second browser magic link without hardcoding a personal account in the repo.
 
-`./dev.sh --electron-user-id <id> --electron-user-email <email>` starts the Electron app logged in as that user.
+`./dev.sh --with-electron --electron-user-id <id> --electron-user-email <email>` starts the Electron app logged in as that user.
 
 `./dev.sh --restart-running-dev-session` stops the tracked workspace dev session and restarts the stack in place with the same startup flags. The command becomes the new long-lived dev session.
 
