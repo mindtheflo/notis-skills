@@ -289,6 +289,8 @@ If running `server/node-server` manually, its `.env` needs `ENV=dev`, `NODE_PORT
 
 ### Dev stack
 
+For off-machine mobile testing, see [Mobile testing with ngrok](development-workflow.md#mobile-testing-with-ngrok).
+
 See [Development Workflow: Stack Tiers](development-workflow.md#stack-tiers) for service selection, dependencies and resource usage. App browser and local sandbox-bridge tests require `--with-portal`; desktop app tests require `--with-electron`.
 
 ### Dynamic ports and auth links
