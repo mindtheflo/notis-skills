@@ -275,16 +275,61 @@ Each synced skill has `agent_targets` metadata:
 
 When `agent_targets` is missing, all four targets default to `true`.
 
-The CLI reconciles account-skill links into:
+Assignments can be managed in the Portal on web or Desktop, individually or
+through **Assign agents** in the selection bar. Mixed bulk checkboxes preserve
+each skill's other assignments: only touched agents are updated. The Skills
+page shows small agent logos for saved assignments (dimmed for globally disabled
+skills), and its Agents checkbox filter matches any selected agent alongside
+the existing search, source, and app filters. These show saved intent, not a
+claim that a particular computer has finished syncing.
+
+`LOCAL_NOTIS_LIST_SKILLS` includes normalized `agent_targets` for installed
+skills. `LOCAL_NOTIS_UPDATE_SKILL` accepts a non-empty partial `agent_targets`
+object with boolean `notis`, `claude_code`, `cursor`, and `codex` keys. The tool
+and `PATCH /portal_skills/agent-targets` share ownership-scoped, revision-checked
+merge logic. Unspecified keys and global `status` remain unchanged. Setting
+`status: "active"` remains a separate, explicit operation (it can be included
+with the native tool's assignment update). Assignment-only edits do not version
+or rewrite skill content.
+
+The endpoint also accepts `expected_updated_at` for sync-originated writes.
+It compares the exact observed revision during the database update and returns
+409 on conflict. Explicit edits retry a bounded merge against the latest row;
+conditional sync edits never overwrite newer user choices. Successful edits
+advance `updated_at`, including explicit reactivation of an already-true target.
+Sync-push content/metadata changes and global status changes also advance it;
+no-op pushes preserve it.
+`sync-settings.agent_targets_conditional_updates` advertises this capability;
+new clients repair links rather than infer deletions against older servers.
+
+Notis uses its account-scoped mirror directly; external-agent links live in:
 
 ```text
-~/.agents/skills
 ~/.codex/skills
 ~/.claude/skills
 ~/.cursor/skills
 ```
 
+`~/.agents/skills` contains the CLI-owned base skills; legacy account links there
+are cleaned up rather than recreated.
+
 Only Notis-managed account-skill links are rewritten or removed. CLI-owned base links are preserved. If a non-symlink entry blocks an account skill, the CLI leaves it in place and skips that link.
+
+Per-agent deletion detection runs **before gathering** can move local folders.
+It only treats a missing external link as deactivation when the previous scoped
+state has matching cloud identity, matching `cloudUpdatedAt`, an active target,
+and `verifiedAgentLinks[agent] = true`. This evidence is recorded only for a
+readable managed link, separately from requested `agentTargets`. Old state
+without evidence is repaired first; global disable/re-enable, failed downloads,
+blockers, renamed/recreated skills, and newer cloud edits are not user deletions.
+Missing whole agent directories are repaired rather than mass-deactivated.
+Fresh cloud reads and conditional writes preserve concurrent edits before local
+reconciliation. Download and link failures are returned in `failedLinks`, shown
+alongside `failedPushes` in the Portal, and reported in CLI output.
+Bundle normalization replaces the entire top-level YAML name/description value,
+including multiline continuations, while preserving nested metadata and the
+instruction body. Orphaned continuation lines beneath a quoted description are
+invalid YAML and can make a readable file invisible to an agent's skill parser.
 
 ### CLI Account-Sync Flow
 
@@ -294,7 +339,7 @@ Only Notis-managed account-skill links are rewritten or removed. CLI-owned base 
 2. Use its server-verified `user_id` as the canonical local scope, falling back to JWT `sub` only for an older server that does not return it.
 3. Remove Notis-managed agent links that point into another account's mirror. For an Electron repeating invocation with `sync_enabled` false, stop here without changing either account mirror or current-account links.
 4. Pull Portal skills from `POST /portal_skills/sync-pull` and exclude the three CLI-owned base names.
-5. When the verified id differs from JWT `sub`, gather the former auth-sub mirror into the canonical mirror and reuse matching prior sync state, backing up conflicts.
+5. Detect deliberate per-agent deletions from matching verified-link evidence before any gather; refresh and conditionally save those removals. When the verified id differs from JWT `sub`, gather the former auth-sub mirror into the canonical mirror and reuse matching prior sync state, backing up conflicts.
 6. Gather top-level local skills into the scoped mirror and dedupe conflicts, while treating the base root as externally managed.
 7. Scan scoped local skills, excluding base skills, and compute folder hashes.
 8. Push changed local non-curated skills through `POST /portal_skills/sync-push`.
