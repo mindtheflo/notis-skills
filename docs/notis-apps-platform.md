@@ -1301,6 +1301,12 @@ the default, supply a key to override it, or pass `shortcut: false` to remove it
 Custom actions have no inferred key. Avoid duplicate action keys within one collection.
 Product's custom Docs updated, Social done and Cancel status actions use D, S and X;
 its selected-action X takes precedence over the controller's ordinary X row toggle.
+A visible active toolbar continues to consume its declared action keys while those actions
+are disabled or pending, without running them or falling through to global chat/navigation.
+Pending actions retain this ownership when collection gestures are temporarily disabled;
+the controller retains that reservation if optimistic filtering removes the final selected
+row before saving finishes. Explicit shortcut opt-out and modal/view visibility protections
+still apply.
 The resolved action drives the keycap, `aria-keyshortcuts` and actual binding together.
 Keyboard-oriented surfaces show the keycap instead of the icon, independent of width;
 coarse-pointer, non-hover touch surfaces show icons instead. Every action should supply
