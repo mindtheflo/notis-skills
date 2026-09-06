@@ -1286,10 +1286,29 @@ Wire list, table, or grid markup through the controller:
 - Spread `getContainerProps()` on the collection container and give it the appropriate list/table/grid ARIA role.
 - Spread `getItemProps(id)` on every focusable row or card. It supplies roving `tabIndex`, `aria-selected`, active state, and click/keyboard behavior.
 - Spread `getCheckboxProps(id)` into `SelectionCheckbox`.
-- Render `SelectionMarquee` and `MultiSelectActionBar` when their standard chrome fits the app.
-- Supply `isItemDisabled`, shortcut overrides, feature opt-outs, or `resolveNextId` for custom grid direction without rebuilding selection logic. J/K remain linear `next`/`previous`; Arrow Up/Down reach the resolver as `up`/`down`, and grids can enable Arrow Left/Right with `shortcuts: { left: 'ArrowLeft', right: 'ArrowRight' }`.
+- Render `SelectionMarquee` and `<MultiSelectActionBar {...collection.getActionBarProps()} />` when their standard chrome fits the app. The controller props bind toolbar shortcuts to this collection, including when sibling app views remain mounted but hidden.
+- Supply `isItemDisabled`, shortcut overrides, feature opt-outs, or `resolveNextId` for custom grid direction without rebuilding selection logic. Shift+arrows always expand or contract through the displayed ordering, independent of custom geometry. J/K remain linear `next`/`previous`; Arrow Up/Down reach the resolver as `up`/`down`, and grids can enable Arrow Left/Right with `shortcuts: { left: 'ArrowLeft', right: 'ArrowRight' }`.
+- Multi-select is opt-in per view: retain `selectionMode: 'none'` for navigation-only collections. Views own their actions, permissions, confirmations, mutations and errors. Set `enableLongPressSelection: true` to enable touch selection without duplicating gesture handlers.
+- Pass items in displayed order, excluding collapsed groups, other pagination pages and filtered-out rows. Offscreen items within the current scrollable collection remain eligible; disabled items do not.
+- Keep the keyboard cursor separate from the opened resource. Shift+arrows and selection gestures move and scroll the cursor without opening a detail panel. Use `onActivate` for opening, not an unconditional `onActiveIdChange`; do not overwrite the item prop handlers.
 - Set `clearSelectionOnPlainClick: false` only when an app deliberately wants row activation to preserve checkbox selection.
 - When more than one collection is mounted, the last focused or pointer-interacted collection owns collection shortcuts. Route, detail, and modal shortcuts retain their normal higher-scope precedence.
+
+Bulk actions use semantic `intent` defaults: archive E, star S, delete #, enable E,
+disable D, pause P, resume R, move M, add-to-folder F, complete C, and start-progress P.
+Keep the view's label, icon, permissions and mutation handler; omit `shortcut` to use
+the default, supply a key to override it, or pass `shortcut: false` to remove it.
+Custom actions have no inferred key. Avoid duplicate action keys within one collection.
+Product's custom Docs updated, Social done and Cancel status actions use D, S and X;
+its selected-action X takes precedence over the controller's ordinary X row toggle.
+The resolved action drives the keycap, `aria-keyshortcuts` and actual binding together.
+Keyboard-oriented surfaces show the keycap instead of the icon, independent of width;
+coarse-pointer, non-hover touch surfaces show icons instead. Every action should supply
+a fallback icon using `currentColor`, without row/status color classes. Toolbar icons
+inherit the action foreground; row and detail status colors remain view-owned.
+Standalone hosts without `ShortcutProvider` use the same scope, priority and active-owner
+arbitration for single-key actions; registration order must not let row toggles consume
+a higher-priority toolbar action.
 
 ```tsx
 import {
@@ -1335,9 +1354,8 @@ return (
     <SelectionMarquee rect={collection.dragRect} />
 
     <MultiSelectActionBar
-      selectedCount={collection.selectedCount}
+      {...collection.getActionBarProps()}
       itemLabel={{ singular: 'note', plural: 'notes' }}
-      actions={collection.actions}
     />
   </>
 );
