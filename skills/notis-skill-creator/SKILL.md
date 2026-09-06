@@ -69,40 +69,26 @@ Create any supporting files in the appropriate directories:
 - Reference scripts or assets by path (e.g., `scripts/helper.py`, `references/glossary.md`).
 - Test the skill by having the assistant follow it in a real scenario.
 
-### Step 5: Save the Skill in Notis
+### Step 5: Save or update the exact skill
 
-When the user wants a Notis skill created, saved, or updated, save it directly in Notis by default. Do not make the user manually download and upload a zip unless they explicitly ask for an export.
+Discover the native skill tools and read the current installed skill list first.
+Resolve the existing skill by exact id, owner and any app binding — never pick the
+first name match. An edit updates that id; creation is only for genuinely new skills.
 
-For a simple skill that only needs a `SKILL.md`:
-
-1. Finish the `SKILL.md` content.
-2. Call `notis_create_skill` with:
-   - `name`
-   - `description`
-   - `skill_md`
-
-For a multi-file skill that needs `scripts/`, `references/`, or `assets/`:
-
-1. Build the skill folder locally.
-2. Package it into a zip:
-
-```bash
-cd /path/to/parent && zip -r my-skill.zip my-skill/
-```
-
-3. Wait for Notis to surface the generated file's public URL in the shell/file context.
-4. Call `notis_create_skill` with:
-   - `name`
-   - `description`
-   - `bundle_url`
-
-Before saving, validate your skill:
-
-- `SKILL.md` exists with proper YAML frontmatter (`name` and `description` fields)
-- Skill name follows kebab-case (lowercase letters, digits, and hyphens)
-- Description clearly explains what the skill does and when to use it
-
-Only hand the zip file back to the user when they explicitly ask for the bundle itself.
+- Single-file creation: use discovered `LOCAL_NOTIS_CREATE_SKILL` with name,
+  description and skill_md. Single-file edit: `LOCAL_NOTIS_UPDATE_SKILL` with
+  skill_id and only changed fields. Preserve unrelated agent_targets and status.
+- Multi-file creation or update: package the complete folder with SKILL.md,
+  scripts, references and assets. Use the CLI `--file bundle_url=./skill.zip`
+  upload path with the discovered CREATE or UPDATE tool (UPDATE includes skill_id).
+  Do not wait for an invented public-URL notification or drop existing resources.
+- Curated skills are maintained in their canonical source and published separately;
+  normal user-skill updates cannot replace curated content. App-owned source
+  changes follow that app's release boundary; editing instructions is not deployment.
+- Validate frontmatter, resource paths and intended changes; dry-run the mutation.
+  Read back the same id, content and preserved assignments; for bundles verify the
+  full resource set. An update must not increase the installed record count.
+- Deliver the native skill link. Export a zip to the user only when requested.
 
 ## SKILL.md Frontmatter
 
@@ -127,7 +113,10 @@ description: "Clear description of what the skill does and when to use it."
 
 ## Notis-Specific Notes
 
-- Notis should save new skills directly with `notis_create_skill` whenever possible.
-- Zip bundles are still valid internally, but they should usually be passed back into Notis through `bundle_url`, not handed to the user for manual upload.
-- The Notis repo stores only Notis-specific skills under `skills/`; other skills (e.g., from Anthropic) are synced from their sources.
-- When Notis Desktop Sync is enabled in the Electron app, skills created via `notis_create_skill` are automatically pulled to `~/.agents/skills/` and symlinked to local agents (Claude Code, Cursor, Codex). Conversely, skills created locally in `~/.agents/skills/` are auto-pushed to the Notis portal. No manual sync step is needed.
+- Product sources live in `server/skills/`; development workflows in `.agents/skills/`.
+  Do not edit generated mirrors or vendor caches as the canonical source.
+- CLI-owned sync materializes account bundles and manages per-agent links. Automatic
+  Desktop sync is optional; local availability is not proven merely by saving a row.
+  Preserve target assignments and use the supported sync workflow for the intended
+  account. Verify content/materialization and discovery before claiming availability.
+- Repo maintainers follow `docs/notis-skills-lifecycle.md` and `docs/skills-sync.md`.
