@@ -2183,7 +2183,9 @@ Notis Apps should feel native to the Portal.
 Preferred UI approach:
 - **Use scaffolded shadcn components** (`@/components/ui/*`) -- do not hand-roll buttons, cards, or badges.
 - **Use Notis theme tokens** -- `bg-background`, `bg-card`, `border-border`, `text-foreground`, `text-muted-foreground`.
-- **Use portal shell classes** -- `notis-app-shell`, `notis-app-surface` for layout.
+- **Use portal shell classes** -- `notis-app-shell` for ordinary pages, `notis-app-split` plus `notis-app-pane-list` / `notis-app-pane-detail` for list-plus-detail pages, `notis-app-surface` for a flat tinted panel, `.list-row` for rows. The design bar in the shipped skill (`server/skills/notis-apps/SKILL.md`, "Design bar") is enforced by `notis apps build` and by the deploy endpoint through `server/config/notis_app_design_rules.json`; the only override is an inline `notis-design-allow` directive with a reason.
+- **Verify gates deploy** -- `notis apps verify` records `.notis/output/verify.json` with a hash of the built artifact and runs runtime design assertions at 1280px and 390px; `notis apps deploy` refuses an artifact without a passing stamp for those exact bytes (break-glass only through `NOTIS_ALLOW_UNVERIFIED_DEPLOY=1`, which warns loudly).
+- **Embedded SDK stays current** -- every `apps build`, `verify`, `screenshot`, and `deploy` re-syncs the app's `packages/sdk` copy to the SDK shipped by the running CLI, so apps pick up hook and style updates without manual steps.
 - **Assume the portal provides theme tokens on the app host** -- apps should feel native by consuming those tokens inside the shadow tree, not by restyling the portal shell.
 - **Keep layouts compact and dashboard-like** -- cards, tables, sections, badges. Not marketing-site heroes.
 - **Use Phosphor icons only** with the `phosphor:` prefix. Never emojis.
