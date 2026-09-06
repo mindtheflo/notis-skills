@@ -1602,11 +1602,11 @@ If a collection-tree sidebar appears missing, do not redesign the app around tha
 
 ## Instant-view lifecycle and cache ownership
 
-The authenticated layout retains at most three visited app shells. Unvisited pages are never mounted speculatively. Same-app navigation changes only the route export inside the existing shell; Store installations retain their sandboxed frame, nonce checks and scoped RPC boundary. Hidden shells cannot publish page context, claim top-bar search, or initiate navigation.
+The authenticated layout retains at most three visited app shells, including while Manager, documents or ordinary product pages are selected. Unvisited pages are never mounted speculatively. Same-app navigation changes only the route export inside the existing shell; Store installations retain their sandboxed frame, nonce checks and scoped RPC boundary. Hidden shells cannot publish page context, claim top-bar search, or initiate navigation.
 
 `GET /portal_views/get?bootstrap=light` preserves authentication, entitlement, live app access checks, route/tool permissions, selected collection item ancestry, schemas and signed assets. It skips tool discovery and initial data queries. Omit the option for the legacy full bootstrap. `tools.read_cache_scope` shares reads only across routes with identical effective permissions; `access_hash` remains route-specific.
 
-`appViewNavigation.ts` owns installed app navigation. It uses the Next-integrated native History API, with synchronous client-shell selection; non-view routes still use normal router navigation. This avoids a competing RSC transition that can commit an old URL after the new view paints.
+`internalNavigation.ts` dispatches shared navigation through the save guard; `appViewNavigation.ts` owns persistent installed-app selection. It uses the Next-integrated native History API, with synchronous client-shell selection; non-view routes still use normal router navigation. This avoids a competing RSC transition that can commit an old URL after the new view paints.
 
 Retained hosts keep a stable DOM order independently of their LRU order: moving an iframe in the DOM can recreate its browsing context. The isolated host receives theme state from its parent bridge and must never require local/session storage or `allow-same-origin`.
 
@@ -1618,6 +1618,8 @@ Writes, realtime and explicit refresh advance generations, so neither the query 
 
 Installed app changes invalidate authorized descriptors and permission-scoped reads. Local source edits do not publish discovery events or alter mounted release state.
 
-Hover/focus prepares authorized destination descriptors and asset bytes without evaluating Store code in the Portal. App-owned `useQueryClient().prefetch` calls share a two-slot queue with host preparation, including isolated frames. Only small explicitly read-only requests qualify; full collections, provider sweeps, fan-out aggregates and mutations remain foreground actions.
+Hover/focus and newest-first chat-link preparation fetch authorized light destination descriptors and asset bytes without evaluating Store code in the Portal. The speculative asset snapshot cache is bounded to 48 entries / 16 MiB and cleared on session/app invalidation. App-owned `useQueryClient().prefetch` calls share a two-slot queue with host preparation, including isolated frames. Only small explicitly read-only requests qualify; full collections, provider sweeps, fan-out aggregates and mutations remain foreground actions.
+
+The shared document/history/save and recent-chat preparation contract is owned by [Continuous internal navigation](portal.md#continuous-internal-navigation).
 
 The canonical UI/authoring contract and cached-read examples live in [the shipped Notis apps skill](../server/skills/notis-apps/SKILL.md#instant-view-loading-contract-required). The CLI scaffold and bundled SDK source mirror that contract. Release the compatible host/SDK before deploying apps that rely on this behavior; this migration itself does not authorize package publication or deployment.
