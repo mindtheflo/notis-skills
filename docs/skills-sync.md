@@ -183,6 +183,44 @@ Notis-managed agent links that point into a different account's mirror, so an
 account switch cannot expose the previous account's skills. Neither account's
 mirror is changed. Manual CLI sync remains available.
 
+### Desktop-independent automatic sync on macOS
+
+A successful CLI command on the current personal OAuth profile enrolls the
+`ai.notis.skills-sync` user LaunchAgent when the server says `sync_enabled=true`.
+An explicit `notis --profile <name> skills sync` also installs or upgrades it.
+This job runs every 60 seconds, exits between runs, and survives Desktop sign-out,
+Desktop exit, terminal exit, npm cache cleanup, and a Mac login. Other platforms
+retain Desktop scheduling and manual CLI sync.
+
+One explicitly bound profile/account/API owns the global agent folders. Ordinary
+commands never replace an existing binding; use an explicit manual sync to switch
+it. Dev-worktree and hosted credentials cannot enroll it. The worker resolves the
+stored OAuth profile afresh, verifies its account and API against the binding,
+refreshes its own OAuth grant, and checks the server preference before acquiring
+the shared sync lock. A disabled preference causes no account-file cleanup or
+mutation. Logging out of the CLI stops authenticated refresh; signing out of
+Desktop does not revoke the independent CLI grant.
+
+The installed job uses an absolute Node executable and a content-addressed,
+self-contained package bundle under `~/.notis/skills/service/runtime/`. No token,
+PATH-resolved executable, npm download, or worktree path is put in the job.
+`~/.notis/skills/service/status.json` stores the latest result or classified error;
+there is no unbounded logfile. Each network request has a 90-second deadline and
+a worker has a four-minute total bound. Inspect the job with
+`launchctl print gui/$(id -u)/ai.notis.skills-sync`. Re-run manual sync to repair
+its registration or update its installed runtime.
+
+The Portal exposes the automatic preference in both browser and Desktop.
+Assignments are saved intent, not local-delivery acknowledgement. On a Mac that
+has not yet enrolled the job, run the authenticated CLI once after enabling it.
+Manual `skills sync` refreshes OAuth before its first settings request too.
+
+Successful wire-content fingerprints are saved separately from folder hashes,
+which have historically differed between server producers. An unchanged payload
+and unchanged local folder do not rewrite skills. Bundled asset changes invalidate
+the fingerprint; failed writes are never cached. External source URLs remain
+rechecked rather than caching a potentially incomplete markdown fallback.
+
 The CLI also owns three base skills: `notis-apps`, `notis-query`, and
 `notis-cli`. Every CLI launch refreshes their canonical copies under
 `~/.notis/skills/base/` from the package and links all three into the supported
