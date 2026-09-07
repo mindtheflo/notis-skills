@@ -91,7 +91,9 @@ there is no local-session identity or development-label substitution. Separate
 apps stay separate: labels use Archived or Unavailable where applicable and
 numbered same-label copies, never raw slugs or UUIDs. Unavailable means the owner
 is absent from the loaded app list; it does not prove deletion. Only eligible
-installed apps remain move targets.
+installed apps remain move targets. Filter pills omit unselected apps with no resources in
+the collection, before assigning same-name numeric labels; the Move to app
+dialog still includes eligible empty apps.
 
 The right mental model is:
 
@@ -603,7 +605,7 @@ defineNotisApp({
 
 Source-owned skills activate with the manifest in the release transaction. Onboarding resolves only installed skills and never refreshes a local snapshot.
 
-App-owned skills and automations remain visible on the global Skills and Automations pages, including independently attached resources. Both pages keep an always-visible **App** filter with **All**, one pill per app, and **No app**; this filter is independent from the Skills **Source** dropdown and the Automations **Trigger** dropdown. App-owned rows carry an `App · <app name>` tag. The list APIs derive that presentation metadata from `owner_app_id`. Independently attached resources remain immediate. Source-packaged skills synchronize only from a released app.
+App-owned skills and automations remain visible on the global Skills and Automations pages, including independently attached resources. Each app's root sidebar menu includes **Automations** and **Skills**, opening the corresponding collection with `app_id` set to the installed app ID. Query changes update an already-open collection; a selected app stays visible in the filter even when it has no matching resources. Both pages keep an always-visible **App** filter with **All**, one pill per app, and **No app**; this filter is independent from the Skills **Source** dropdown and the Automations **Trigger** dropdown. App-owned rows carry an `App · <app name>` tag. The list APIs derive that presentation metadata from `owner_app_id`. Independently attached resources remain immediate. Source-packaged skills synchronize only from a released app.
 
 #### Skills with supporting files
 
