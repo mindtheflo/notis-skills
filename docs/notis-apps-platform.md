@@ -12,7 +12,7 @@ Two surfaces, two responsibilities. Each one keeps its lane — see [Publishing 
 
 | Action | CLI | Portal |
 |---|---|---|
-| Scaffold a new app, pull source from another app, dev, build, verify, deploy | ✅ | ❌ |
+| Scaffold a new app, pull source from another app, build, verify, deploy | ✅ | ❌ |
 | Edit listing metadata + media (screenshots, tagline, category) | ✅ (edit `notis.config.ts` + `metadata/`) | ❌ |
 | Update app source in Workspace after checks | ✅ | ✅ (agent-assisted Update app) |
 | Publish or Update a store listing (Team or Public) | ✅ after explicit confirmation (`apps publish --confirm-ready`) | ✅ (App Details → Publish/Update) |
@@ -1140,7 +1140,7 @@ The host debounces autosave, supports Cmd/Ctrl-S, reports dirty/saving state, fl
 
 #### Change feed (`useDatabaseSubscription`)
 
-`useDatabaseSubscription(databaseSlug, options?)` is `useDocuments` plus freshness: rows written by a skill, an automation or another device reach an open view without polling. It takes every `useDocuments` option (`filter`, `pageSize`, `offset`, `fetchAll`, `enabled`) plus `subscribe` (default `true`) to keep the query but drop the feed, and returns `{ documents, rows, loading, error, refetch, live }` — `rows` is an alias of `documents`.
+`useDatabaseSubscription(databaseSlug, options?)` is `useDocuments` plus freshness: rows written by a skill, an automation or another device reach an open view without polling. It takes every `useDocuments` option (`filter`, `pageSize`, `offset`, `fetchAll`, `enabled`, `includeContent`) plus `subscribe` (default `true`) to keep the query but drop the feed, and returns `{ documents, rows, loading, error, refetch, live }` — `rows` is an alias of `documents`.
 
 ```tsx
 const { rows, live, refetch } = useDatabaseSubscription('workspaces', { pageSize: 250 });
@@ -1403,7 +1403,6 @@ When manager chat adds current-page context to a handover draft, the active reso
 The CLI command specifications own the exact options. See the generated
 [CLI reference](../packages/cli/README.md). App commands include `init`, `scaffolds`, `pull`, `create`,
 `link`, `build`, `verify`, `screenshot`, `deploy`, `publish`, `list`, `doctor`, and ordinary lifecycle commands.
-`apps dev`, `apps roots` and direct backend-bypassing deployment have been removed.
 
 Generated Vite scripts use `--configLoader runner` so the file-linked SDK TypeScript
 config loads on supported Node 18/20 runtimes. Scaffolding also normalizes canonical
@@ -1626,17 +1625,43 @@ If a collection-tree sidebar appears missing, do not redesign the app around tha
 
 ## Instant-view lifecycle and cache ownership
 
-The authenticated layout retains at most three visited app shells, including while Manager, documents or ordinary product pages are selected. Unvisited pages are never mounted speculatively. Same-app navigation changes only the route export inside the existing shell; Store installations retain their sandboxed frame, nonce checks and scoped RPC boundary. Hidden shells cannot publish page context, claim top-bar search, or initiate navigation.
+The authenticated layout retains at most three visited app shells, including while Manager, documents or ordinary product pages are selected. Unvisited pages are never mounted speculatively. Same-app navigation changes only the route export inside the existing shell; Store installations retain their sandboxed frame, nonce checks and scoped RPC boundary. Hidden shells cannot publish page context, claim top-bar search, or initiate navigation. Without an active app target every retained shell is hidden and inactive; leaving the authenticated layout or changing the session retires them.
+
+`AppOpeningBoundary` owns the entire host opening sequence (lazy route module, authorized descriptor, bundle and stylesheet). It shows no fake page or dashboard skeleton. A single small indicator appears only after 150 ms of continuous preparation; handing off between stages does not restart that delay. The indicator is a compact 28px pill anchored at the bottom center of the non-scrolling app-view viewport (`SidebarInset`), excluding the sidebar, with safe-area clearance, opaque inverse-theme colors, a 5px Notis-green pulse, and a scaled-down layered overlay shadow. Its label is “Opening”; the recovery state stays compact with “Still opening” and Retry. The pulse respects reduced-motion preferences. It sits above app content without covering the page with a blocking layer. After 20 seconds the indicator offers recovery. Once the real app has mounted, only the app owns missing-data placeholders. Isolated Store frames report render readiness to this same parent boundary; they do not display a second host loader.
+
+While an uncached destination descriptor is pending, the previous route stays mounted and visible but inert. Its resource/item identity and path remain those of the displayed descriptor until the destination commits. This preserves the shell without allowing an old article's controls to act under a new article's context. Warm cached opens and background revalidation do not replace populated content.
 
 `GET /portal_views/get?bootstrap=light` preserves authentication, entitlement, live app access checks, route/tool permissions, selected collection item ancestry, schemas and signed assets. It skips tool discovery and initial data queries. Omit the option for the legacy full bootstrap. `tools.read_cache_scope` shares reads only across routes with identical effective permissions; `access_hash` remains route-specific.
 
+The view bridge runs blocking authentication, entitlement, descriptor hydration/signing and native database reads in worker threads so independent app requests can progress on the event loop. Live access and database-definition checks remain mandatory on cached descriptors. The cached-detail path reads the live app row and its owned database definitions together, with an exact embedded count; missing, malformed or truncated embedded sets fall back to the fully paginated database read. It never caches the live access decision or changes the returned detail payload. Cache invalidation advances an epoch under a short lock; a worker holding an older snapshot cannot repopulate the cache after invalidation. No database I/O runs while that cache lock is held. Generic tool calls also offload connection lookup, billing-user reads and credit-cap evaluation. Financial settlement remains synchronous so cancelling a queued worker cannot skip billing after a paid provider result; access, credit denial and fail-closed billing still complete before a result is returned.
+
+The sidebar's `portal_apps/list` summary read and Portal app authentication/CLI scope checks also run in worker threads, so a concurrent sidebar refresh cannot monopolize the request event loop while a view opens. The existing 10-second, user/options-scoped summary cache retains copy isolation and uses an invalidation epoch: a summary read begun before a mutation cannot repopulate the cache after that mutation. This does not defer authentication or weaken runtime access checks.
+
+App-view database queries include document bodies by default. Lists that only need titles and properties can explicitly use `useDocuments(slug, { includeContent: false })`: the runtime projects metadata columns and returns null body fields, while keeping authorization, filtering, sorting, and pagination unchanged. Metadata and full-content query caches are separate. Open records still use `useDocument`; full-body search must request full content when needed. This opt-in does not change generic database-tool responses or existing apps.
+
+Fully materialized apps reuse their app-owned database rows without consulting legacy unowned databases. App detail shares one fully paginated, request-scoped owned-database read between declared database materialization and interactive metadata. App access is checked first; the snapshot is not retained across requests, newly materialized declared rows are included, and document export remains limited to source-declared databases. Catalog counts use the service-only `notis_app_active_document_counts_v1(text[])` RPC for one exact aggregate over the backend-authorized database IDs; a missing RPC during a rolling rollout falls back to the prior individual counts. Empty databases remain zero and archived rows remain excluded. Native document reads reuse the database snapshot that authorized the document for schema projection instead of performing that same authorization lookup twice; generic document-tool dispatch also runs its blocking read off the event loop.
+
 `internalNavigation.ts` dispatches shared navigation through the save guard; `appViewNavigation.ts` owns persistent installed-app selection. It uses the Next-integrated native History API, with synchronous client-shell selection; non-view routes still use normal router navigation. This avoids a competing RSC transition that can commit an old URL after the new view paints.
+
+Clicked destinations and back/forward navigation start their authorized lightweight descriptor in parallel with the lazy route module. These foreground preparations run at foreground priority, so they are never held behind the speculative queue’s concurrency limit, and they share the same scoped descriptor/asset promises. Isolated apps download their bundle bytes while their sandboxed host boots; they still execute only inside that frame. Host-provided rich-text and Markdown editors load on demand, with an editor-local accessible placeholder, so non-editor views do not wait for editor code.
 
 Retained hosts keep a stable DOM order independently of their LRU order: moving an iframe in the DOM can recreate its browsing context. The isolated host receives theme state from its parent bridge and must never require local/session storage or `allow-same-origin`.
 
+Retained component-host wrappers must preserve a definite `height: 100%` and must not flex-shrink. Otherwise the renderer's percentage-height chain resolves to content height and split layouts stop above the viewport bottom, especially with short skeletons or empty states. Do not position these wrappers: the opening pill anchors to `SidebarInset`.
+
+For split-view sizing changes, check the real Portal with delayed initial reads and again after content resolves, including a resize. From `portal/`, run `node scripts/smokes/check-split-app-viewport.cjs --session <named-browser-session> --app-id <id> --state loading` (then `--state loaded`). The read-only check verifies top, bottom and horizontal viewport boundaries plus desktop pane heights; it fails if the requested loading state is absent. Standalone app-harness screenshots do not prove the Portal's parent-height chain.
+
 The SDK cache reads successful snapshots synchronously, including empty arrays and null documents. `loading` denotes a missing initial response; `isFetching` also covers background refresh. Query keys include exact arguments. The host scopes caches by account/session, API environment, runtime app, bundle version and effective permissions. Query clients retain at most 100 idle entries each, 24 recent app/permission scopes; route detail and asset caches are bounded separately. Active subscriptions pin entries until detached. No persistent offline storage is introduced.
 
+Descriptor and asset reads have a 15-second deadline. SDK cached reads default to a 30-second deadline, expose a scoped error on expiry, and retain any successful snapshot. Deadlines do not replay callbacks or mutations; late results cannot replace a successful retry. A tool call inside a custom read must itself carry `readOnly: true` (the outer `useQuery` option does not implicitly classify nested calls). Prefer `useToolQuery` for a simple tool read; it forwards that classification. An unmarked generic SQL/tool call invalidates app queries after completing, which makes it unsuitable inside a cached read and can invalidate its own result before commit.
+
 Returning to a retained app after the default 30-second freshness window invalidates its mounted reads after paint, including reads inside a Store frame. Cached content stays visible while they refresh; retaining the shell must not bypass refresh merely because its hooks never remounted.
+
+Mounting or navigating to a view honors the descriptor cache's 30-second freshness window. Realtime changes, app changes, asset errors and explicit retry force an authorized descriptor refresh; merely finding cached content does not force a redundant request. This does not change runtime-call authorization or the account, version and permission cache boundaries.
+
+Storage-backed runtime descriptors batch uncached JavaScript and stylesheet signing into one private-bucket request. Existing per-path URL cache expiry is unchanged; configured external URLs bypass signing, cache hits avoid storage calls, and a single miss uses single-file signing. Batch responses are matched by path, not order. A per-file error does not discard other valid URLs; failed/malformed results are not cached, and transport failures do not fan out retries. App authorization still runs before descriptor construction.
+
+Runtime execution discovers only the requested provider family. Its partial descriptor cache is keyed separately from a complete tools/list response, in addition to account, app, route and effective access hash; concurrent requests in the same scope share discovery. This only narrows discovery work: exact declared names, live app access, connected-account scope, surface policy, credit gates and billing remain enforced. App tool discovery/execution omits separate integration-logo metadata requests because app descriptors do not expose those icons; account and label resolution are still live. Other discovery surfaces retain logo metadata and use exact provider slugs for API requests. Runtime detail/route-list reads also skip signing Store screenshot URLs; app-detail and Store consumers retain media signing by default, and runtime bundle JS/CSS URLs still use the authorized signing path.
 
 Writes, realtime and explicit refresh advance generations, so neither the query cache nor transport deduplication may reuse a pre-invalidation response. Access loss and confirmed auth transitions permanently retire old clients and clear evaluated bundle state. Signed URL renewal updates transport without resetting a healthy shell or stylesheet; asset failure requests fresh authorized URLs. Stale bundle completions and old-route Store publishers cannot commit into the current destination.
 
@@ -1647,3 +1672,19 @@ Hover/focus and newest-first chat-link preparation fetch authorized light destin
 The shared document/history/save and recent-chat preparation contract is owned by [Continuous internal navigation](portal.md#continuous-internal-navigation).
 
 The canonical UI/authoring contract and cached-read examples live in [the shipped Notis apps skill](../server/skills/notis-apps/SKILL.md#instant-view-loading-contract-required). The CLI scaffold and bundled SDK source mirror that contract. Release the compatible host/SDK before deploying apps that rely on this behavior; this migration itself does not authorize package publication or deployment.
+
+
+### Loading measurement objectives
+
+Use public UX response-time objectives, not a private competitor account or an assumed Notion SLA:
+
+| Navigation state | First real app skeleton or content | Initial view fully loaded |
+| --- | ---: | ---: |
+| Cached return | 100 ms | 1,000 ms |
+| Uncached app | 1,000 ms | 2,500 ms |
+
+These are engineering targets, not a statement that every app already meets them. The response boundaries are informed by [NN/g's 0.1 s and 1 s guidance](https://www.nngroup.com/articles/response-times-3-important-limits/); [Google's good LCP threshold is 2.5 s at p75](https://web.dev/articles/lcp). Full data readiness is a stronger condition than LCP, so do not present the two metrics as equivalent or claim a Notion comparison from them.
+
+Measure the first app-owned skeleton separately from the host opening indicator. An absent skeleton is N/A, not zero. Record visible app readiness and outstanding/background requests separately; silent revalidation must not erase the fact that cached content was already usable. Errors, missing releases and timeouts are not successful loads. Inventory every manifest route and list apps with no routes explicitly.
+
+Keep browser-download-cold launch, page-session/app-cache-cold navigation and retained cached returns as separate cases. State whether the surrounding shell was settled before navigation, preserve app release/build identities, and use the same protocol before and after. One sample per route is a diagnostic sweep, not repeated-run or field-percentile evidence. Record sample counts and report the slow routes alongside aggregate values.
