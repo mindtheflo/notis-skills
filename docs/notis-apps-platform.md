@@ -737,7 +737,7 @@ The manifest includes:
 
 The manifest `author` describes the app package, but it does not control the
 Store's visible publisher. Public and team listings are attributed to the Notis
-account that publishes them: the listing owner's `users.full_name` is displayed,
+account that publishes them: the listing owner's `users.first_name` is displayed,
 and the corresponding `user_id` is returned as `metrics.publisher.id`. This keeps
 publisher identity tied to the authenticated account rather than mutable app
 source metadata.
