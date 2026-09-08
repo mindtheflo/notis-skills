@@ -40,6 +40,44 @@ touch the Mac.
 Never `cd /vercel/sandbox` or assume a sandbox working directory — run
 `peekaboo` directly on the local shell.
 
+## Read-only status checks — shortest verified loop
+
+For a named native app, after switching shell mode:
+
+1. Run `peekaboo permissions status --json` once for this session.
+   For an inspection of a named app, bring it into view with
+   `peekaboo app switch --to "APP NAME" --verify --json` before capture unless
+   it is already visibly frontmost. This is navigation within the inspection,
+   not permission to edit data. Do not repeatedly capture an unavailable or
+   hidden window, or substitute a menu-bar capture for that app's contents.
+2. Capture the named app directly: `peekaboo see --app "APP NAME" --json`.
+   Request `max_output_length: 200000` on this shell call. Read `data.ui_elements`,
+   including static labels with `role: "other"`, and their bounds. Status
+   headings can appear near the END of this array, after menus and controls;
+   cutting stdout to 30000–50000 characters can silently hide the very status
+   text you need. Do not list every running app when the target is known.
+3. If those labels establish the requested facts, report them immediately.
+   Preserve distinctions between visible status groups and actual running
+   agents. State collapsed, off-screen or unverified items explicitly; do not
+   infer their status. Inspect further only for a specific missing fact.
+
+Use the command examples here first; consult that command's `--help` if the
+installed version rejects a flag or you need an option not shown here. Do not
+load the full tool catalog for a simple status check. Avoid duplicate captures
+of the same unchanged UI and huge unfiltered JSON dumps.
+
+For smaller text-only inspections, `peekaboo inspect-ui --app-target "APP NAME"
+--max-elements 300 --max-depth 20 --json` is available, but its text summary can
+omit static status headings. Increasing its depth does not fix that omission.
+Notice the different target flags: **`see --app`**, **`inspect-ui --app-target`**.
+
+If accessibility text is insufficient, use the command-and-capture guide.
+A successful screenshot command only proves a file was captured: a path in
+shell stdout does **not** mean you have seen its pixels. Do not claim visual
+verification without an available image-reading tool. Do not use Peekaboo's
+`--analyze` as a default workaround; it requires a separately configured AI
+provider and adds another model loop. Report any remaining visual limitation.
+
 ## Peekaboo is already installed — do not install it
 
 The Notis desktop app installs and manages a pinned Peekaboo for you (it's on
@@ -121,12 +159,11 @@ peekaboo click --coords 672,607 --foreground
 Prefer clicking by element ID/query when `see`/`inspect-ui` give you one. Use
 coordinates only when they don't (see next section).
 
-## Browser / web apps (Dia, Chrome, Safari, …): screenshot, don't inspect
+## Browser / web apps: use screenshots when accessibility is insufficient
 
-Browsers usually expose **no accessibility tree for their web content**, so
-`see` and `inspect-ui` fail (`App '<X>' is running but has no windows or
-dialogs`, or return 0 elements) even though the page is visible. **Do not loop
-on `see`/`inspect-ui` for web pages** — switch to vision:
+Some browser/web-app surfaces expose no useful accessibility text even when
+the page is visible. If one targeted inspection is empty or incomplete,
+**do not loop on `see`/`inspect-ui`** — switch to an available vision path:
 
 1. Capture the window: `peekaboo image --app "Dia" --window-id <id> --mode window --path /tmp/shot.png --json`
    (get `<id>` from `peekaboo list windows --app "Dia" --json`).
@@ -144,9 +181,10 @@ control instead.
 
 ## Safety Rules
 
-- **Never** click, type, or destructively automate unless the user explicitly
-  asked for that action or the target is a controlled test surface. Capturing
-  and inspecting are read-only and safe; sending input is not.
+- Perform UI actions only within the user's requested task. Read-only inspection
+  may focus the named app or expand its read-only status groups, unless the user
+  forbids navigation. It does not authorize edits, sends, stopping agents or
+  changing settings. Destructive actions need explicit authorization.
 - Treat the screen as private. Do not exfiltrate screenshots or on-screen
   content beyond what the task requires, and do not capture and forward
   unrelated windows.
@@ -170,18 +208,17 @@ control instead.
   plain command per call so it auto-runs without prompting.
 - Do not bare-coordinate-click (`peekaboo click X,Y`) — it's rejected. Focus the
   window and use `click --coords X,Y --foreground`.
-- Do not loop on `see` / `inspect-ui` for a browser's web page (Dia, Chrome,
-  Safari). They have no web accessibility tree — screenshot with `image` and
-  target coordinates visually instead.
+- Do not repeatedly inspect a browser page that exposes no useful accessibility
+  text. Use an available image-reading path, or report that limitation.
 - Do not rely on `space`/keyboard to play a web video — click the on-screen
   play control.
 - Do not skip the permissions check. A missing grant returns wallpaper-only or
   empty captures, not an obvious error.
 - Do not reuse element IDs across snapshots, or act without a fresh `see`.
-- Do not guess command syntax from memory — load `peekaboo learn` /
-  `--help` for the installed version.
-- Do not send input to the user's machine on your own initiative. Read-only
-  capture is the default; mutation needs an explicit request.
+- Use this skill's command examples; consult the relevant command's `--help`
+  when an example is rejected or additional flags are needed.
+- Do not send unrelated input to the user's machine. Keep navigation within
+  the requested inspection; data mutation needs its own authorization.
 
 For command discovery and the screenshot/action loop, read command-and-capture.
 Local shell, permissions, fresh screenshots/element IDs, foreground targeting and

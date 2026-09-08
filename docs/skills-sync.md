@@ -391,6 +391,11 @@ Curated skills can be pulled and linked locally when they are installed for the 
 
 ### Pull Semantics
 
+Local-shell pull-only refresh shares the account mirror but does not acknowledge
+uploads: it advances content checkpoints only for successful cloud writes and
+retains cloud-missing entries until two-way sync reconciles deletions. Pending
+local edits therefore remain upload candidates, even across disabled-sync periods.
+
 `sync-pull` returns the user's `skills` rows except:
 
 - rows with `status: "deleted"`

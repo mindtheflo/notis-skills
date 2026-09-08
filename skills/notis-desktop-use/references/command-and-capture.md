@@ -2,13 +2,14 @@
 
 ## Start Here — Load The Live Tool Surface
 
-Peekaboo's CLI is the source of truth for its own command surface; load it
-instead of guessing syntax (it matches the installed version):
+For the short native status-check loop, use the examples in SKILL.md. For
+unfamiliar operations, Peekaboo's CLI is the source of truth; load only the
+relevant command's help before expanding to the full catalog:
 
 ```bash
-peekaboo learn          # full agent guide: system prompt, tool catalog, signatures
-peekaboo tools          # MCP/agent tool catalog (supports --verbose, --json)
 peekaboo <command> --help
+peekaboo tools          # broader catalog when the needed command is unknown
+peekaboo learn          # full guide only for complex/unfamiliar workflows
 ```
 
 Most commands support `--json` (alias `--json-output`) for machine parsing —
