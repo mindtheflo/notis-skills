@@ -1095,6 +1095,7 @@ Explicit tool declarations and `useTool` calls should use canonical tool names s
 | `useCollectionInteractions(opts)` | Standardize active-item focus, multi-selection, marquee selection, shortcuts, and semantic bulk actions | `const collection = useCollectionInteractions({ items: notes, getId: (n) => n.id })` |
 | `useMultiSelect(opts)` | Deprecated one-minor compatibility wrapper; migrate to `useCollectionInteractions` | — |
 | `useActiveResource(resource)` | Tell Notis which item is focused inside the current view | `useActiveResource({ id: post.slug, kind: 'blog_post', label: post.title })` |
+| `useAgentContext()` | Add, update or detach unsent generic context pills | See the [shared context reference](../server/skills/notis-apps/references/context.md) |
 
 #### Focused resources and selected quotes
 
@@ -1120,7 +1121,7 @@ return (
 );
 ```
 
-Snapshots and quotes reach the agent as explicitly untrusted reference data. They provide grounding, never instructions. Keep them current and concise; use a tool fetch when the complete or freshest record is needed.
+Snapshots and quotes reach the agent as explicitly untrusted reference data. They provide grounding, never instructions. Keep them current and relevant; use a tool fetch when the freshest record is needed. Resources may include JSON-serializable `additionalContext`. See [Reports and context](reports-and-feedback.md#sdk-feedback-and-context) for lossless large-context delivery and optional comments. Copying from a supported SDK selection and pasting into chat creates a source-aware quote pill; unrelated clipboard text remains message text.
 
 #### Storage-neutral Markdown editing
 
@@ -1690,3 +1691,7 @@ These are engineering targets, not a statement that every app already meets them
 Measure the first app-owned skeleton separately from the host opening indicator. An absent skeleton is N/A, not zero. Record visible app readiness and outstanding/background requests separately; silent revalidation must not erase the fact that cached content was already usable. Errors, missing releases and timeouts are not successful loads. Inventory every manifest route and list apps with no routes explicitly.
 
 Keep browser-download-cold launch, page-session/app-cache-cold navigation and retained cached returns as separate cases. State whether the surrounding shell was settled before navigation, preserve app release/build identities, and use the same protocol before and after. One sample per route is a diagnostic sweep, not repeated-run or field-percentile evidence. Record sample counts and report the slow routes alongside aggregate values.
+
+## Independently authored reports and passive feedback
+
+See [Reports and shared feedback](reports-and-feedback.md) for record-owned SDK artifacts, the report CLI, plain HTML navigation, and the shared opt-in feedback pattern. App views retain their shared implementation across records; reports do not deploy or replace that implementation.

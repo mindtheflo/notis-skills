@@ -61,7 +61,7 @@ Important flags:
 
 The script discovers repo-maintained skills dynamically: **every `server/skills/<name>/` folder that contains a `SKILL.md`** (`discover_repo_skills`). Adding a new skill folder makes it syncable with no script edit. A subset — `DEFAULT_OUR_SKILLS` in the script — is marked `is_default = true` on bootstrap, which auto-installs it for eligible users; experimental/opt-in skills are intentionally left out of that set.
 
-`notis-reports` is in that default subset and declares `feature_flag: store`. It is therefore auto-installed only for users eligible for Store features, without adding a CLI base skill or a separate Notis App.
+`notis-reports` is in that default subset and declares `feature_flag: store`. It is therefore auto-installed only for users eligible for Store features, without adding a CLI base skill or a separate Notis App. `notis-feedback` shares the Store flag but is not in the default auto-install subset; it is an opt-in entrypoint to the [shared feedback reference](../server/skills/notis-reports/references/feedback.md).
 
 ### Access metadata
 

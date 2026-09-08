@@ -66,8 +66,8 @@ Sandbox shell browser control:
 - starts cookie-empty on every run
 - cannot access the user's real browser profile, host keychain, local
   cookies, local tabs, or local extensions
-- authenticates per run via the 1Password Service Account flow, a
-  per-task credential, or a state file uploaded into the sandbox
+- can authenticate to Notis with its Portal sign-in-link tool; other sites use
+  the 1Password Service Account flow, a per-task credential, or provisioned state
 - is safer and more reproducible for general web automation
 - is the default for repeatable QA, scraping, screenshots, and public app tests
 
@@ -93,6 +93,10 @@ Use live CLI help for command syntax instead of loading generic examples unneces
 
 Read only the guide needed for this task from this skill bundle.
 
+- For authenticated Notis apps, reports and documents, use the shared reading
+  guide under [Notis Apps](../notis-apps/SKILL.md#read-existing-apps-and-resources)
+  (hosted guide: `notis://docs/notis-apps/references/reading.md`). Notis sign-in
+  links work in a sandbox too; they do not require local cookies or credentials.
 - [Embedded Agent Browser Skill](references/browser-help.md)
 - [Canonical Notis Profile And State Persistence](references/profile-and-state.md)
 - [Local Shell Browser Control](references/local-browser.md)

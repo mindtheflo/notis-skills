@@ -30,8 +30,13 @@ Use sandbox sessions for:
 
 ### Sandbox Auth
 
-The sandbox cannot reuse the user's local Notis profile. For auth, use one
-of these:
+The sandbox cannot reuse the user's local browser profile. For Notis itself,
+use the existing sign-in-link tool through native tools or the authenticated
+Notis CLI; follow the reading guide under the Notis Apps skill (hosted guide:
+`notis://docs/notis-apps/references/reading.md`). No local cookies, password vault,
+or user-opened Portal session is needed for that flow.
+
+For other sites, use one of these:
 
 - The **1Password Service Account** flow described above. This is the
   preferred path because it works in both runtimes and keeps credentials

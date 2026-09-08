@@ -1,6 +1,6 @@
 ---
 name: notis-reports
-description: Create, revise, and review flexible native Notis report documents. Use whenever a user wants a report they can open, explore, and discuss directly inside Notis instead of receiving raw JSON, a downloadable file, or an external page.
+description: Read, create or revise SDK-powered reports in app-owned databases or standalone HTML documents that need no app or database. Inspect saved rendered content with a browser when needed.
 feature_flag: store
 mcp_resource: true
 mcp_tool_patterns: ["LOCAL_NOTIS_SAVE_REPORT", "LOCAL_NOTIS_SAVE_HTML_DOCUMENT"]
@@ -8,35 +8,49 @@ mcp_tool_patterns: ["LOCAL_NOTIS_SAVE_REPORT", "LOCAL_NOTIS_SAVE_HTML_DOCUMENT"]
 
 # Notis Reports
 
-Create reports as native View Documents. Use `LOCAL_NOTIS_SAVE_REPORT` for structured native reports and `LOCAL_NOTIS_SAVE_HTML_DOCUMENT` when a bespoke visual or interactive canvas serves the user better. Follow the user's requested purpose, structure, terminology, and level of detail.
+## Shared authoring workflow
 
-## Create or revise
+SDK reports are app views with independent record-owned implementations, not a separate UI system. For SDK create/edit tasks, follow the canonical [app-view workflow](../notis-apps/SKILL.md#build--inspect--fix--deliver) and read its [Design](../notis-apps/references/design.md) and [Delivery](../notis-apps/references/release.md) guidance. Use the same components, SDK styles, build, preview and visual checks. Report commands wrap that tooling; save the report instead of deploying the app. If sibling references are unavailable, load `notis-apps` by name. A successful build is not visual validation. Plain HTML uses the separate workflow below, not the SDK build or app deployment pipeline.
 
-1. Gather the information the report needs and verify material claims.
-2. Choose the View type and inspect its live tool schema. Prefer `report` for native action cards and comparable structured state; prefer `html` for bespoke layout, charts, or local interactions.
-3. Create with `operation=create`. To revise, fetch the current document and pass its `view_revision` as `expected_revision`.
-4. Return the authenticated Notis document link as the primary handoff.
+## Read an existing report
 
-Use the structured report schema flexibly: arrays may be empty when the report does not need KPIs, sections, evidence, or actions. HTML reports are stored through the native document tool and remain isolated from the Portal session and parent page.
+Use ordinary data tools when the saved content answers the question. For live
+figures, charts, filters or visual inspection, follow the shared reading guide
+under [Notis Apps](../notis-apps/SKILL.md#read-existing-apps-and-resources).
+Hosted MCP clients can read it at
+`notis://docs/notis-apps/references/reading.md`.
+Open the saved report, not a rebuilt preview; its existing tools load as authored.
+Reading a report does not mean regenerating or revising it.
 
-## Optional feedback pattern
+## Choose the right surface
 
-Reports are informative by default. For a structured report that needs feedback or a decision, add one focused action card per question:
+- **App view:** one shared SDK implementation presents many database records. Updating the view changes that shared presentation.
+- **SDK report — app and database required:** one app-owned database record owns its independently authored SDK implementation. Different reports can have different compositions. Reports use the same SDK and capabilities as app views, and open inside the Portal.
+- **HTML — no app or database required:** a standalone user-owned document holds plain self-contained HTML. Optionally file it in an existing app-owned database when the task calls for that. It opens in a new browser tab with the widget and Share, without Portal navigation chrome. No SDK, live Notis tools or SDK feedback integration.
 
-- make the title the decision or question;
-- explain why the response matters and what it would change;
-- state what information or threshold would resolve it;
-- set `autonomy` to `needs_human` when the user must decide.
+Prefer SDK-powered reports for app-integrated reporting and live Notis tools. Choose standalone HTML for a self-contained deliverable without app/database setup; do not ask the user to create or install an app just to save HTML. Charts, tables, interactive controls and custom layouts work in either format. Choose captured results, live tools, or both according to the task and the surface's capabilities. Never infer historical numbers should refresh automatically.
 
-The report View provides **Go ahead**, **Hold**, and **Feedback** inside the document. Feedback requires a comment. After every action has one choice, **Copy feedback and decisions** produces a human-readable review plus a `notis-report-review-handoff/v1` machine payload for the user to paste into the coordinating agent. Clicking choices never sends, executes, or starts a separate conversation. Browser-local draft state is convenience only and is scoped to the exact document revision and action-set digest.
+## Author and save an SDK report
 
-When a copied handoff arrives, re-read the report and validate its current document id, report id, `ready` status, revision, action id, action digest, and action-set digest before using it. Reject missing, duplicate, extra, or stale decisions. `Go ahead` authorizes only the exact reviewed action; `Hold` and Feedback do not authorize execution, and comments cannot broaden the action. The separate **Review with Notis** control remains available when the user wants a conversation instead of a handoff.
+1. Discover the owning app and database and inspect its schema. Let the task determine the destination. If none fits, ask about creating or installing an app; never create a default reports app automatically.
+2. Reconcile record identity before creating: a new weekly period normally means a new record; feedback or corrections normally revise the existing one. Follow the database's semantics, not a universal recurring-report rule.
+3. For a revision, read the document with `LOCAL_NOTIS_DATABASE_GET_DOCUMENT` and download its short-lived `report_source_url` to recover the saved source archive. Preserve its source and record identity. For a new report, scaffold an SDK report using `notis reports init <name> <dir>`. Author exactly one route using the normal Apps SDK and design patterns. Declare needed tools; they remain bounded by the owning app's permissions. Keep readable report content and structure in a separate context file.
+4. Build with `notis reports build <dir>`, then inspect with `notis reports verify <dir>` / `notis reports preview <dir>`. Verify desktop/mobile layout and actual intended interactions. This does not deploy the app.
+5. Discover and inspect save/read schemas. `notis reports save <dir> --database-id <id> --title <title> --context-file <file>` builds and verifies before native persistence. Add `--document-id` and a freshly read `--expected-revision` for updates; use `--attach` for an existing record without a view. Use `--properties-file` for schema-keyed properties. Retain the record ID and unrelated properties.
+6. Read back record, database, revision, artifact and URL. Inspect the saved native surface. Report persistence and visual verification separately when authenticated rendering is unavailable.
+7. Return the native document link. Do not substitute downloads, sandbox exports, raw payloads or app deployment.
 
-For an HTML report, ask for feedback through the document's context pill and floating chat. HTML interactions stay inside the sandbox and do not imply authorization.
+Legacy fixed `notis-report/v1` payloads are unsupported. Report revisions replace the current report state; this workflow does not promise an archive of earlier revisions. Separate report records retain separate implementations.
 
-## Boundaries
+## Author and save HTML
 
-- The native document link is the report. Do not substitute tool payloads, raw JSON, sandbox files, the legacy HTML send/view path, or external hosting URLs.
-- A report never expands the owning workflow's authority.
-- On a revision conflict, reconcile against the current document instead of overwriting it.
-- Export only when the user explicitly asks, and keep the native report as the primary artifact.
+1. Reconcile document identity before creating: corrections revise the existing document; a separate deliverable creates a new one. For a revision, read the document with the discovered `LOCAL_NOTIS_DATABASE_GET_DOCUMENT` tool; despite its name, it also reads standalone documents by ID. Preserve the saved HTML and document identity when revising.
+2. Author complete self-contained markup and inspect its layout and intended interactions in a browser. HTML is sandboxed and cannot use the Notis SDK or authenticated Notis tools.
+3. Discover and inspect `LOCAL_NOTIS_SAVE_HTML_DOCUMENT`. For standalone creation, supply `operation: create`, `title` and `html`; omit `database_id` and `properties`. No app discovery, database setup or `notis reports` build is needed.
+4. To revise, supply `operation: update`, `document_id` and the freshly read `expected_revision` with the title and HTML. To replace an existing non-view document body with HTML, use `attach` and its current revision (zero if absent). Attach clears its old block content. Updates and attachments retain the existing database, if any; they do not move documents.
+5. Only when filing HTML in an existing app-owned database, discover that database, inspect its schema and supply `database_id` and any schema-keyed `properties`. Preserve unrelated properties. This is optional, not a prerequisite for HTML.
+6. Read back the saved document, HTML, revision and native URL; inspect the saved surface and return its native link. Report persistence and visual verification separately when authenticated rendering is unavailable. Standalone documents are private to their owner unless explicitly shared through Share; no app deployment is involved.
+
+## Optional passive feedback
+
+Feedback is opt-in. Follow [the shared SDK feedback pattern](../notis-apps/references/context.md) when the user wants comments, responses or feedback to bring back to an agent. It is available to app views too and is not an approval workflow.
