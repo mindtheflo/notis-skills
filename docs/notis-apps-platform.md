@@ -776,6 +776,13 @@ Important hooks include:
 
 ### CLI
 
+The CLI requires Node.js 22.12.0 or newer; Node 24 LTS is recommended.
+This floor follows Commander 15 and also covers the app builder dependencies.
+Both installation and the public entry point reject older runtimes before
+loading CLI dependencies, even when npm engine warnings are not enforced.
+Install lifecycle scripts can be disabled, but the runtime check still applies.
+See the generated [CLI setup reference](../packages/cli/README.md#install).
+
 The repo-local Notis CLI is the supported interface for app work in a normal repo workspace, primarily in:
 - `packages/cli/src/command-specs/apps.js`
 - `packages/cli/src/runtime/app-platform.js`
@@ -1408,10 +1415,20 @@ The CLI command specifications own the exact options. See the generated
 `link`, `build`, `verify`, `screenshot`, `deploy`, `publish`, `list`, `doctor`, and ordinary lifecycle commands.
 
 Generated Vite scripts use `--configLoader runner` so the file-linked SDK TypeScript
-config loads on supported Node 18/20 runtimes. Scaffolding also normalizes canonical
+config loads without relying on native TypeScript loading. New templates use Vite 8
+(Node 20.19+ or 22.12+; the repository runtime is Node 24). Scaffolding also normalizes canonical
 Vite commands in registry templates; custom or compound shell commands remain unchanged.
 For pulled historical source with the canonical `vite build` script, `apps build`
 supplies the loader at execution time and leaves the source snapshot unchanged.
+The SDK retains `rollupOptions`, Vite 8's compatibility alias, because SDK refresh
+also serves historical Vite 5/6/7 app projects. On Vite 8 it adds the upstream
+`esmExternalRequirePlugin` for the same external React entry points: bundled
+CommonJS dependencies must use ESM imports, not browser-side `require()` calls.
+On Vite 8 this plugin alone owns React externalization; listing those entries in
+`rollupOptions.external` too would bypass its CommonJS conversion. Historical
+Vite versions keep the original external list instead.
+The bundle remains one `app.js` ES module plus `app.css`; host and CORS settings
+remain caller-owned and are not broadened by the SDK.
 
 ## Release-only delivery
 
@@ -1691,6 +1708,22 @@ These are engineering targets, not a statement that every app already meets them
 Measure the first app-owned skeleton separately from the host opening indicator. An absent skeleton is N/A, not zero. Record visible app readiness and outstanding/background requests separately; silent revalidation must not erase the fact that cached content was already usable. Errors, missing releases and timeouts are not successful loads. Inventory every manifest route and list apps with no routes explicitly.
 
 Keep browser-download-cold launch, page-session/app-cache-cold navigation and retained cached returns as separate cases. State whether the surrounding shell was settled before navigation, preserve app release/build identities, and use the same protocol before and after. One sample per route is a diagnostic sweep, not repeated-run or field-percentile evidence. Record sample counts and report the slow routes alongside aggregate values.
+
+### App scaffold styling
+
+New CLI app scaffolds use Tailwind CSS 4 with `@tailwindcss/postcss`.
+`app/globals.css` is the only Tailwind entry point: it explicitly loads
+`tailwind.config.ts` and scans app, component, library and bundled SDK sources.
+The retained config owns Notis theme tokens and the animation plugin. SDK
+`styles.css` is framework-neutral CSS on injected Notis variables; it must not
+start a second Tailwind compilation or depend on the consuming app's `@apply`
+context. Keep its canonical `packages/sdk/src/styles.css` and bundled scaffold
+copy synchronized. Existing apps may retain their older Tailwind build.
+The SDK's `notisTailwindContent` Vite helper registers its sources with an
+additional CSS `@source` directive for Tailwind 4 imports. For existing Tailwind 3
+`@tailwind` entry points it retains the temporary configuration wrapper. Both
+paths preserve the author's configuration and PostCSS plugins; neither rewrites
+the app's source files.
 
 ## Independently authored reports and passive feedback
 

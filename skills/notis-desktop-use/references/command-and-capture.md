@@ -1,59 +1,80 @@
 # Command and capture guide
 
-## Start Here — Load The Live Tool Surface
+## Start here — load the live tool surface
 
 For the short native status-check loop, use the examples in SKILL.md. For
-unfamiliar operations, Peekaboo's CLI is the source of truth; load only the
-relevant command's help before expanding to the full catalog:
+unfamiliar operations, load only the relevant command's help before expanding
+to the full catalog:
 
 ```bash
 peekaboo <command> --help
-peekaboo tools          # broader catalog when the needed command is unknown
-peekaboo learn          # full guide only for complex/unfamiliar workflows
+peekaboo tools describe <name>
+peekaboo tools
+peekaboo learn
 ```
 
-Most commands support `--json` (alias `--json-output`) for machine parsing —
-**prefer it** when you need to act on the result. They share a snapshot cache,
-so capture once and reuse snapshot IDs.
+Prefer `--json` for machine-readable results. Copy snapshot and element IDs
+exactly from the latest observation; never fabricate them or assume a cached
+snapshot remains actionable after an action. A snapshot belongs to its live
+producing host. Keep explicit `--no-remote` or Bridge routing consistent; if
+that host cannot reuse the reference, recapture instead of changing boundaries.
 
-## Core Loop: See → Act → Re-see
+## Core loop: see → act → re-see
+
+Run each line as a separate shell call. Replace placeholders with observed
+values; these are alternative actions, not a script to run against one snapshot.
 
 ```bash
-# 1. Capture an annotated UI map with element IDs (and a snapshot ID).
-peekaboo see --json
+# 1. Capture the requested app, preserving its current focus state.
+peekaboo see --app "APP NAME" --json
 
-# 2. Act on a target by element ID, query, or coordinates.
-peekaboo click "Save"        # by query/label
-peekaboo type "hello world"  # send text
-peekaboo hotkey cmd,s        # modifier combo in one shot
+# 2. Perform ONE task-authorized action using that fresh snapshot.
+peekaboo click --on "ELEMENT_ID" --snapshot "SNAPSHOT_ID" --json
 
-# 3. Re-capture before the next decision — IDs are per-snapshot and the screen
-#    changes after every action.
-peekaboo see --json
+# 3. Observe again before deciding on the next action.
+peekaboo see --app "APP NAME" --json
+
+# Other action forms, each requiring its own fresh snapshot:
+peekaboo type "hello world" --snapshot "FRESH_SNAPSHOT_ID" --json
+peekaboo press cmd+s --snapshot "FRESH_SNAPSHOT_ID" --json
 ```
 
-Re-`see` after navigation, dialogs, app switches, or any dynamic re-render.
-Treat stale element IDs as invalid.
+For typing, first focus the intended field using its element ID, observe again,
+then use the new snapshot. Do not use `--accept-dispatched` to turn unverified
+text delivery into claimed success. If the task permits foreground input and
+background delivery is unsuitable, explicitly target the app/window and add
+`--foreground`; do not silently enable it after a refusal.
 
-## Command Map
+Inspect `effect` on action results, along with `retry_safe`,
+`requires_fresh_observation`, and `error.hint` when present. Dispatched keys or
+pointer events can have `success: true` but `effect: unverifiable`; errors can
+also follow a partial mutation. Observe before deciding to retry, and verify
+the requested application state rather than treating dispatch as completion.
+Read-only output may omit `effect`. Partial app-level observations are not
+exact-window proof and do not supply mutation authority.
 
-Run `peekaboo learn` / `peekaboo <command> --help` for authoritative flags.
+Re-`see` after navigation, dialogs, app switches, or dynamic re-renders.
+Treat stale element and snapshot IDs as invalid.
 
-- **Vision & capture:** `see` (annotated UI map + snapshot IDs, optional AI
-  analysis), `image` (raw PNG/JPG of screen/window/menubar, `--analyze`),
-  `capture` (live/long-running), `list apps|windows|screens|menubar|permissions`.
-- **Interaction:** `click`, `type` (`--clear`, `--delay`), `press`, `hotkey`,
-  `paste` (atomic clipboard set → Cmd+V → restore), `scroll`, `swipe`, `drag`,
-  `move`.
-- **Windows / menus / apps / spaces:** `window` (close/minimize/maximize/move/
-  resize/focus/list), `space` (list/switch/move-window), `menu`, `menubar`,
-  `app` (launch/quit/relaunch/hide/switch/list, `--open <url|path>`), `open`,
-  `dock`, `dialog` (click/input/file/dismiss/list).
-- **Automation & integration:** `agent` (natural-language automation with
-  dry-run planning + resume), `inspect-ui` (accessibility-tree inspection with
-  no screenshot), `run` (`.peekaboo.json` scripts), `sleep`, `clean`, `config`,
-  `daemon`, `mcp`.
+## Command map
 
-For structured multi-step flows, orchestrate commands inside a
-`.peekaboo.json` script run via `peekaboo run --output ...`, rather than
-chaining many shell calls.
+Use the managed CLI's help for exact flags. The v4 surface is:
+
+- **Capture:** `see` (element map), `see --no-elements` (pixels only),
+  `see --tree --no-screenshot` (AX text only), `capture live`.
+- **Discovery:** `app list`, `window list`, `screen list`, `menubar list`,
+  `permissions status`.
+- **Interaction:** `click --on` or `click --at`, `type`, `press cmd+s`,
+  `action AXPress --on`, `paste`, `scroll`, `drag --from --to`, `move`.
+- **Windows / menus / apps / spaces:** `window`, `space`, `menu`, `menubar`,
+  `app` (launch/quit/relaunch/hide/focus/list), `dock`, `dialog`.
+  Focusing an app or window requires explicit `--foreground`.
+- **Verification:** `verify` waits for a predicate; exit 0 means satisfied,
+  1 unsatisfied, and 2 unknown. Use explicit duration units such as `2s`;
+  bare duration values are milliseconds.
+
+For multi-step flows, orchestrate separate plain CLI calls through the local
+shell tool. Peekaboo 4 removed `run` and its `.peekaboo.json` script format,
+`hotkey`, `image`, and CLI `inspect-ui`. Do not restore those old spellings or
+bypass the single-command rule with a shell script. AI analysis and `agent`
+require separate provider configuration and are not the default capture path.

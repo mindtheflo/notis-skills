@@ -46,7 +46,7 @@ For a named native app, after switching shell mode:
 
 1. Run `peekaboo permissions status --json` once for this session.
    For an inspection of a named app, bring it into view with
-   `peekaboo app switch --to "APP NAME" --verify --json` before capture unless
+   `peekaboo app focus "APP NAME" --foreground --json` before capture unless
    it is already visibly frontmost. This is navigation within the inspection,
    not permission to edit data. Do not repeatedly capture an unavailable or
    hidden window, or substitute a menu-bar capture for that app's contents.
@@ -66,10 +66,12 @@ installed version rejects a flag or you need an option not shown here. Do not
 load the full tool catalog for a simple status check. Avoid duplicate captures
 of the same unchanged UI and huge unfiltered JSON dumps.
 
-For smaller text-only inspections, `peekaboo inspect-ui --app-target "APP NAME"
---max-elements 300 --max-depth 20 --json` is available, but its text summary can
-omit static status headings. Increasing its depth does not fix that omission.
-Notice the different target flags: **`see --app`**, **`inspect-ui --app-target`**.
+For smaller text-only inspections, use `peekaboo see --tree --no-screenshot
+--app "APP NAME" --max-elements 300 --depth 20 --json`. Read `data.ui_elements`
+and any truncation warnings; a partial tree does not prove a missing item is
+absent. Both capture forms use `--app`. If `semantic_scope` is
+`application_partial`, the labels are app-level context, not proof of the
+requested window, and no reusable snapshot or mutation authority is available.
 
 If accessibility text is insufficient, use the command-and-capture guide.
 A successful screenshot command only proves a file was captured: a path in
@@ -122,14 +124,16 @@ peekaboo permissions status --all-sources   # compare Bridge host vs local CLI
 
 What each capability needs (System Settings → Privacy & Security):
 
-- **Screen Recording** → required for `see`, `image`, and any capture. Enable
-  the terminal/IDE/process that runs `peekaboo`. After a Homebrew upgrade,
-  re-check that the enabled entry points at the current binary path.
+- **Screen Recording** → required for screenshots and pixel capture. Enable
+  the execution host identified by the permissions result. After a managed
+  Desktop upgrade, re-check that the enabled entry points at the current host.
 - **Accessibility** → required for clicks, typing, key presses, and window
-  control. Enable the same terminals/IDEs.
-- **Event Synthesizing** → `peekaboo permissions request-event-synthesizing`
+  control and AX inspection. Enable the execution host reported by the check.
+- **Event Synthesizing** → `peekaboo permissions request event-synthesizing`
   (add `--no-remote` to request it for the local CLI process). Enables
-  process-targeted typing/hotkeys/paste without stealing focus.
+  receipt-targeted typing/key chords/paste without stealing focus. Request it
+  only when permission setup is authorized; do not change grants during an
+  ordinary read-only inspection.
 
 If a needed grant is missing, tell the user exactly which toggle to flip and
 re-run `peekaboo permissions status --json` before continuing. Do not loop on
@@ -142,38 +146,40 @@ Peekaboo **Bridge** path even when TCC appears granted — CoreGraphics can
 report success while returning only the desktop wallpaper or a redacted image.
 On remote Macs, Screen Recording may be blocked while clicks and typing still
 work through Accessibility; when the target UI is otherwise knowable, continue
-with clicks / `inspect-ui` instead of giving up.
+with authorized clicks / `see --tree --no-screenshot` instead of giving up.
 
-## Clicking by coordinates needs `--foreground`
+## Coordinate clicks: exact snapshot or explicit foreground
 
-A bare `peekaboo click X,Y` (no target) is **rejected**:
-`Background click requires --app/--pid/--window-id or a snapshot; use
---foreground`. So when you click a raw coordinate, focus the window first and
-pass `--foreground`:
+Without a fresh exact-window snapshot, a coordinate click needs explicit
+foreground delivery. Use it only when focusing and interacting with that app
+are within the user's task. Focus the exact window, then use global screen
+points with `--foreground`:
 
 ```bash
-peekaboo window focus --app "Dia" --window-id 118166
-peekaboo click --coords 672,607 --foreground
+peekaboo window focus --app "Dia" --window-id 118166 --foreground --json
+peekaboo click --at 672,607 --global --app "Dia" --window-id 118166 --foreground --json
 ```
 
-Prefer clicking by element ID/query when `see`/`inspect-ui` give you one. Use
+Prefer clicking by element ID/query when `see`/`see --tree` give you one. Use
 coordinates only when they don't (see next section).
 
 ## Browser / web apps: use screenshots when accessibility is insufficient
 
 Some browser/web-app surfaces expose no useful accessibility text even when
 the page is visible. If one targeted inspection is empty or incomplete,
-**do not loop on `see`/`inspect-ui`** — switch to an available vision path:
+**do not loop on `see`/`see --tree`** — switch to an available vision path:
 
-1. Capture the window: `peekaboo image --app "Dia" --window-id <id> --mode window --path /tmp/shot.png --json`
-   (get `<id>` from `peekaboo list windows --app "Dia" --json`).
+1. Capture the window: `peekaboo see --no-elements --app "Dia" --window-id <id> --mode window --path /tmp/shot.png --json`
+   (get `<id>` from `peekaboo window list --app "Dia" --json`).
 2. Locate the control **visually** in that screenshot.
-3. Convert to a screen coordinate: window-capture pixels map to global display
-   points offset by the window's top-left origin (from the capture's `bounds` /
-   `list windows`). E.g. a window at origin `(0,30)` → image pixel `(672,577)`
-   is screen point `(672,607)`.
-4. Focus the window and `click --coords X,Y --foreground` (above), then
-   re-`image` to confirm the result changed.
+3. Convert screenshot pixels to global logical screen points using the returned
+   `coordinate_context` (including image scale and viewport origin). Do not
+   assume Retina pixels equal screen points or use stale window bounds. If the
+   mapping is missing or uncertain, recapture rather than guessing.
+4. Focus the exact window and `click --at X,Y --global --app "Dia"
+   --window-id <id> --foreground --json` (above), then re-`see` to confirm the
+   requested result. Background coordinates instead require the explicit
+   fresh exact-window snapshot; never silently switch to foreground on refusal.
 
 Keyboard shortcuts like `space` do **not** reliably control web players (in a
 browser, space scrolls the page) — click the actual on-screen play/pause
@@ -206,8 +212,8 @@ control instead.
   The Notis desktop app already installed and manages it on your `PATH`.
 - Do not chain `peekaboo` with `&&`, `||`, `;`, pipes, redirects, or `cd`. One
   plain command per call so it auto-runs without prompting.
-- Do not bare-coordinate-click (`peekaboo click X,Y`) — it's rejected. Focus the
-  window and use `click --coords X,Y --foreground`.
+- Do not bare-coordinate-click (`peekaboo click X,Y`). Use `--at` with a fresh
+  exact-window snapshot or explicitly authorized `--foreground` targeting.
 - Do not repeatedly inspect a browser page that exposes no useful accessibility
   text. Use an available image-reading path, or report that limitation.
 - Do not rely on `space`/keyboard to play a web video — click the on-screen
@@ -215,6 +221,16 @@ control instead.
 - Do not skip the permissions check. A missing grant returns wallpaper-only or
   empty captures, not an obvious error.
 - Do not reuse element IDs across snapshots, or act without a fresh `see`.
+  For snapshot-targeted actions, copy the returned `data.snapshot_id` into
+  `--snapshot`; after
+  that action, capture again before taking the next one.
+- Do not interpret exit 0 or `success: true` as proof of the requested UI
+  change. Inspect the action's `effect`, `retry_safe`,
+  `requires_fresh_observation`, and any `error.hint`. `partial`, `unverifiable`,
+  `suspected_noop`, or an uncertain failure requires observation before retry;
+  `refused` is not permission to broaden targeting or enable foreground input.
+  Read-only results may omit `effect`. Verify the user's intended result even
+  after `confirmed`, especially for typing, key presses, and sends.
 - Use this skill's command examples; consult the relevant command's `--help`
   when an example is rejected or additional flags are needed.
 - Do not send unrelated input to the user's machine. Keep navigation within
