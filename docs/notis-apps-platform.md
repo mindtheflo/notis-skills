@@ -536,6 +536,12 @@ notis apps pull <app-id> [dir]
 Pulled source includes the same files that were deployed for that installed app version: app code, `notis.config.ts`, and `metadata/` listing assets. See [Forking an existing app](#forking-an-existing-app-1).
 Current CLI deploys also persist lockfiles so pulled checkouts can reproduce the original install. Older apps that predate source snapshots must be redeployed once before `notis apps pull` can recreate an editable checkout.
 
+App-owned source can be edited in a gitignored worktree directory such as
+`.context/`; deployment versions its source independently of this repository.
+Do not maintain a second `app-changes/` snapshot solely to version an installed
+app. Preserve the app's CLI linkage and build/verification workflow. Changes to
+the Notis platform itself still belong in Git and follow the repository release policy.
+
 #### App-owned skill source and materializations
 
 An app-owned skill has one editable definition: the skill directory declared by
@@ -1728,3 +1734,11 @@ the app's source files.
 ## Independently authored reports and passive feedback
 
 See [Reports and shared feedback](reports-and-feedback.md) for record-owned SDK artifacts, the report CLI, plain HTML navigation, and the shared opt-in feedback pattern. App views retain their shared implementation across records; reports do not deploy or replace that implementation.
+
+### App stylesheet root parity
+
+Built styles scope document-level defaults to both `:host` (Portal shadow DOM)
+and `[data-notis-app-root]` (the standalone verification harness). The harness
+mount carries that attribute. Preserve Tailwind theme variables at both roots;
+host-only variables silently remove spacing, typography and controls in previews.
+Global `html` and `:root` selectors remain forbidden in deployed bundles.
