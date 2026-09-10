@@ -536,6 +536,23 @@ notis apps pull <app-id> [dir]
 Pulled source includes the same files that were deployed for that installed app version: app code, `notis.config.ts`, and `metadata/` listing assets. See [Forking an existing app](#forking-an-existing-app-1).
 Current CLI deploys also persist lockfiles so pulled checkouts can reproduce the original install. Older apps that predate source snapshots must be redeployed once before `notis apps pull` can recreate an editable checkout.
 
+The release manifest declares `source_storage_format: tar-gzip-v1` for binary source snapshots.
+A private `.notis/source-snapshot.json` descriptor in the source bucket owns the format and
+archive digest, so source remains readable after old runtime bundles are pruned. These snapshots
+store every original source file, including tests and lockfiles,
+inside `source.tar.gz`; `metadata/` files also remain directly accessible at their original
+paths for signed listing-media URLs. This avoids raw source triggering storage-edge injection
+filters without rewriting or excluding code. Pull and Store submission decode the archive
+losslessly; snapshots without this descriptor retain the legacy per-file reader. Unknown formats,
+corrupt archives, duplicate/unsafe members, and snapshots exceeding 10,000 files or 256 MiB
+of decoded source fail closed. Deployment claims journal the descriptor, archive and media object paths,
+not the member paths, so failed-release cleanup removes the exact staged objects.
+
+**Reader rollout:** the archive reader must be deployed to every API/worker environment that
+can pull or submit an app before archive-format releases are created there. Older platform
+builds cannot read the new source format; this is a platform release dependency, not an app
+deployment or database migration. Existing snapshots are never rewritten.
+
 App-owned source can be edited in a gitignored worktree directory such as
 `.context/`; deployment versions its source independently of this repository.
 Do not maintain a second `app-changes/` snapshot solely to version an installed
@@ -1514,6 +1531,10 @@ activation → readback** through the service-role-only `commit_notis_app_releas
 - Upload errors and transaction conflicts preserve the previous active release. Cleanup can reconcile
   a failed claim's current revision only to abort that exact uncommitted attempt, never to activate it.
   Never clean uncertain commits; prove outcome by release ID/version readback first.
+- Storage upload failures report `app_storage_upload_failed` (502); only an upstream HTTP 409
+  reports `app_storage_conflict`. Error details retain the structured upstream status and object
+  identity, even when the storage SDK's JSON decoder masks an HTML error. Response bodies,
+  request headers, signed URLs, and credentials are not included in those diagnostics.
 - Post-commit cache invalidation, provider work, old unreferenced runtime-bundle cleanup or local CLI
   persistence failure does not turn a committed release into an undeployed result. Source snapshots
   remain immutable; old runtime bundles are not a restore dependency.
