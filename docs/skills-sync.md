@@ -417,6 +417,13 @@ For curated installs, the backend resolves live content from `curated_skills` at
 
 For bundle-backed skills, the backend hydrates bundle files from storage when possible. If bundle hydration fails, the response marks `bundle_hydration_failed` so the CLI can fall back to the available cloud skill payload.
 
+The sync-pull branch runs its synchronous entitlement/database reads, bundle
+downloads, ZIP processing, and timestamp writes in a worker thread. None of
+that work may run on the API event loop: slow storage otherwise stalls unrelated
+Manager, integrations, and app-view responses. The request still awaits the
+complete pull and preserves the same filtering, failure, and temporary-file
+cleanup behavior.
+
 ### Push Semantics
 
 `sync-push` accepts local non-curated skills and stores them as user-owned `skills` rows with `source: "local"`.
