@@ -1098,6 +1098,8 @@ app-source/{app_id}/v{version}/
 
 ## SDK Reference
 
+`Dialog` is the SDK-owned native modal; apps own its content and actions. See the [SDK component reference](../server/skills/notis-apps/references/sdk.md) for its props. Browser top-layer rendering keeps it above selection toolbars inside either rendering boundary, and SDK collection shortcuts are suspended within it.
+
 ### Imports
 
 | Import | Purpose |
