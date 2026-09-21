@@ -1460,7 +1460,7 @@ remain caller-owned and are not broadened by the SDK.
 Workspace runs released app versions only. Local and cloud agents use the same workflow.
 A request to create or edit app source authorizes updating that app in Workspace after checks pass.
 Explicit read-only, preview-only or no-deploy requests stop at local artifacts and checks: no remote
-app/resource creation or mutation, Workspace preview, deployment or live verification. Store
+   app/resource creation or mutation, Workspace preview, deployment or live verification. Store
 publication always needs separate explicit approval.
 
 1. Inspect the effective CLI profile and the exact app's current version with `apps list --json`.
@@ -1497,6 +1497,15 @@ publication always needs separate explicit approval.
    Never blindly replay an uncertain create/deploy response; reconcile its exact identity/version first.
    `apps publish --confirm-ready` is **Publish to Store**, separately approved and listing-gated.
    Workspace delivery is **Update app**, with no Store screenshot/readiness requirement.
+
+Deployment-base validation requires both `base_version` (including zero for a new
+container) and `expected_updated_at`. `app_deployment_base_required` identifies
+missing fields. A successful link from an older CLI does not establish a usable
+base: use the CLI build matching the backend, relink the exact unreleased app,
+and rebuild/verify its source. Never synthesize a revision, relax the backend
+comparison, or recreate the app. A development-checkout CLI can validate a dev
+backend without an npm publication; that recovery does not update the published
+CLI used by other agents.
 
 Definite activation rejections and pre-activation upload failures become terminal CLI
 idempotency results only after owned staging is reconciled. Missing readback, lost claim
@@ -1746,7 +1755,10 @@ New CLI app scaffolds use Tailwind CSS 4 with `@tailwindcss/postcss`.
 The retained config owns Notis theme tokens and the animation plugin. SDK
 `styles.css` is framework-neutral CSS on injected Notis variables; it must not
 start a second Tailwind compilation or depend on the consuming app's `@apply`
-context. Keep its canonical `packages/sdk/src/styles.css` and bundled scaffold
+context. In particular, keep rules outside Tailwind-owned `@layer base` /
+`@layer components` blocks: Vite processes the SDK import independently, and
+Tailwind 3 rejects those blocks without matching `@tailwind` directives in that
+same stylesheet. Keep its canonical `packages/sdk/src/styles.css` and bundled scaffold
 copy synchronized. Existing apps may retain their older Tailwind build.
 The SDK's `notisTailwindContent` Vite helper registers its sources with an
 additional CSS `@source` directive for Tailwind 4 imports. For existing Tailwind 3
@@ -1765,3 +1777,7 @@ and `[data-notis-app-root]` (the standalone verification harness). The harness
 mount carries that attribute. Preserve Tailwind theme variables at both roots;
 host-only variables silently remove spacing, typography and controls in previews.
 Global `html` and `:root` selectors remain forbidden in deployed bundles.
+
+## Embedded SDK build ownership
+
+`packages/sdk/` is the only authored SDK source. The CLI build generates `packages/cli/dist/sdk/`, which is included in the published package and used for scaffolding/refresh. Do not restore an authored copy under `packages/cli/template/packages/sdk/`. The public CLI mirror receives the canonical `packages/sdk/` source so its builds remain self-contained.
