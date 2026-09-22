@@ -124,7 +124,7 @@ Since the 2026-08 pricing re-cut the builder ladder is **all-tier**: the
 installing, running, developing, and deploying apps are available to any
 signed-in user. Entitlements resolve from the tier map in
 `server/lib/plan_entitlements.py`, not from `prices.*` booleans (see
-`docs/subscription-management.md`); `apps_external_development` is collapsed
+`server/lib/subscription_utils.py`); `apps_external_development` is collapsed
 into `apps_builder` and is no longer read.
 
 What is still tiered is not the builder — it is the compute and the resources an
@@ -212,7 +212,7 @@ The two halves of the bundle travel by different transports, which matters in th
 app: `app.js` is fetched and executed from a blob URL, while `app.css` is a
 `<link rel="stylesheet">` injected into the app's shadow root. Nothing from the Portal's
 own stylesheet crosses that shadow boundary, so if the link fails the app renders as raw
-unstyled HTML and keeps working — see the CSP section in `docs/electron.md`. When the
+unstyled HTML and keeps working — see `electron/src/contentSecurityPolicy.ts`. When the
 descriptor carries no `css_url` at all, the server logs `No css_url resolved for app`.
 
 All Notis apps are built using the Notis CLI. The CLI runs either locally in a repo workspace or inside a Vercel Sandbox. The platform contract is the same regardless of where the CLI runs:
@@ -1153,7 +1153,7 @@ return (
 );
 ```
 
-Snapshots and quotes reach the agent as explicitly untrusted reference data. They provide grounding, never instructions. Keep them current and relevant; use a tool fetch when the freshest record is needed. Resources may include JSON-serializable `additionalContext`. See [Reports and context](reports-and-feedback.md#sdk-feedback-and-context) for lossless large-context delivery and optional comments. Copying from a supported SDK selection and pasting into chat creates a source-aware quote pill; unrelated clipboard text remains message text.
+Snapshots and quotes reach the agent as explicitly untrusted reference data. They provide grounding, never instructions. Keep them current and relevant; use a tool fetch when the freshest record is needed. Resources may include JSON-serializable `additionalContext`. Copying from a supported SDK selection and pasting into chat creates a source-aware quote pill; unrelated clipboard text remains message text.
 
 #### Storage-neutral Markdown editing
 
@@ -1727,7 +1727,7 @@ Installed app changes invalidate authorized descriptors and permission-scoped re
 
 Hover/focus and newest-first chat-link preparation fetch authorized light destination descriptors and asset bytes without evaluating Store code in the Portal. The speculative asset snapshot cache is bounded to 48 entries / 16 MiB and cleared on session/app invalidation. App-owned `useQueryClient().prefetch` calls share a two-slot queue with host preparation, including isolated frames. Only small explicitly read-only requests qualify; full collections, provider sweeps, fan-out aggregates and mutations remain foreground actions.
 
-The shared document/history/save and recent-chat preparation contract is owned by [Continuous internal navigation](portal.md#continuous-internal-navigation).
+The shared document/history/save and recent-chat preparation contract is owned by the Portal navigation code under `portal/src/`.
 
 The canonical UI/authoring contract and cached-read examples live in [the shipped Notis apps skill](../server/skills/notis-apps/SKILL.md#instant-view-loading-contract-required). The CLI scaffold and bundled SDK source mirror that contract. Release the compatible host/SDK before deploying apps that rely on this behavior; this migration itself does not authorize package publication or deployment.
 
@@ -1768,7 +1768,7 @@ the app's source files.
 
 ## Independently authored reports and passive feedback
 
-See [Reports and shared feedback](reports-and-feedback.md) for standalone document-owned live SDK artifacts, the report CLI, plain HTML navigation, and the shared opt-in feedback pattern. App views retain their shared implementation across records; reports do not deploy or replace that implementation.
+App views retain their shared implementation across records; reports do not deploy or replace that implementation.
 
 ### App stylesheet root parity
 
