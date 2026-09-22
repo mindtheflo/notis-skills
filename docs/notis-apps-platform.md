@@ -1768,7 +1768,7 @@ the app's source files.
 
 ## Independently authored reports and passive feedback
 
-See [Reports and shared feedback](reports-and-feedback.md) for record-owned SDK artifacts, the report CLI, plain HTML navigation, and the shared opt-in feedback pattern. App views retain their shared implementation across records; reports do not deploy or replace that implementation.
+See [Reports and shared feedback](reports-and-feedback.md) for standalone document-owned live SDK artifacts, the report CLI, plain HTML navigation, and the shared opt-in feedback pattern. App views retain their shared implementation across records; reports do not deploy or replace that implementation.
 
 ### App stylesheet root parity
 

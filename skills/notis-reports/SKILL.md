@@ -1,6 +1,6 @@
 ---
 name: notis-reports
-description: Read, create or revise SDK-powered reports in app-owned databases or standalone HTML documents that need no app or database. Inspect saved rendered content with a browser when needed.
+description: Read, create or revise standalone live SDK reports and plain HTML documents. Neither requires an app or database. Inspect saved rendered content with a browser when needed.
 feature_flag: store
 mcp_resource: true
 mcp_tool_patterns: ["LOCAL_NOTIS_SAVE_REPORT", "LOCAL_NOTIS_SAVE_HTML_DOCUMENT"]
@@ -10,7 +10,7 @@ mcp_tool_patterns: ["LOCAL_NOTIS_SAVE_REPORT", "LOCAL_NOTIS_SAVE_HTML_DOCUMENT"]
 
 ## Shared authoring workflow
 
-SDK reports are app views with independent record-owned implementations, not a separate UI system. For SDK create/edit tasks, follow the canonical [app-view workflow](../notis-apps/SKILL.md#build--inspect--fix--deliver) and read its [Design](../notis-apps/references/design.md) and [Delivery](../notis-apps/references/release.md) guidance. Use the same components, SDK styles, build, preview and visual checks. Report commands wrap that tooling; save the report instead of deploying the app. If sibling references are unavailable, load `notis-apps` by name. A successful build is not visual validation. Plain HTML uses the separate workflow below, not the SDK build or app deployment pipeline.
+SDK reports are standalone documents with independent live app-view implementations, not a separate UI system. For SDK create/edit tasks, follow the canonical [app-view workflow](../notis-apps/SKILL.md#build--inspect--fix--deliver) and read its [Design](../notis-apps/references/design.md) and [Delivery](../notis-apps/references/release.md) guidance. Use the same components, SDK styles, build, preview and visual checks. Report commands use that tooling with a report build profile; save the document instead of deploying an app. If sibling references are unavailable, load `notis-apps` by name. A successful build is not visual validation. Plain HTML uses the separate workflow below, not the SDK build or app deployment pipeline.
 
 ## Read an existing report
 
@@ -25,22 +25,20 @@ Reading a report does not mean regenerating or revising it.
 ## Choose the right surface
 
 - **App view:** one shared SDK implementation presents many database records. Updating the view changes that shared presentation.
-- **SDK report — app and database required:** one app-owned database record owns its independently authored SDK implementation. Different reports can have different compositions. Reports use the same SDK and capabilities as app views, and open inside the Portal.
+- **SDK report — no app or database required:** one private user-owned document owns its independently authored live SDK implementation. Different reports can have different compositions. Reports use the same SDK and capabilities as app views, and open inside the Portal.
 - **HTML — no app or database required:** a standalone user-owned document holds plain self-contained HTML. Optionally file it in an existing app-owned database when the task calls for that. It opens in a new browser tab with the widget and Share, without Portal navigation chrome. No SDK, live Notis tools or SDK feedback integration.
 
-Prefer SDK-powered reports for app-integrated reporting and live Notis tools. Choose standalone HTML for a self-contained deliverable without app/database setup; do not ask the user to create or install an app just to save HTML. Charts, tables, interactive controls and custom layouts work in either format. Choose captured results, live tools, or both according to the task and the surface's capabilities. Never infer historical numbers should refresh automatically.
+Prefer SDK-powered reports for live Notis tools and view behavior. Choose HTML for plain self-contained markup without the SDK. Never create/install an app or a database merely to save either format. Charts, tables, interactive controls and custom layouts work in either format. Choose captured results, live tools, or both according to the task and the surface's capabilities. Never infer historical numbers should refresh automatically.
 
 ## Author and save an SDK report
 
-1. Discover the owning app and database and inspect its schema. Let the task determine the destination. If none fits, ask about creating or installing an app; never create a default reports app automatically.
-2. Reconcile record identity before creating: a new weekly period normally means a new record; feedback or corrections normally revise the existing one. Follow the database's semantics, not a universal recurring-report rule.
-3. For a revision, read the document with `LOCAL_NOTIS_DATABASE_GET_DOCUMENT` and download its short-lived `report_source_url` to recover the saved source archive. Preserve its source and record identity. For a new report, scaffold an SDK report using `notis reports init <name> <dir>`. Author exactly one route using the normal Apps SDK and design patterns. Declare needed tools; they remain bounded by the owning app's permissions. Keep readable report content and structure in a separate context file.
-4. Build with `notis reports build <dir>`, then inspect with `notis reports verify <dir>` / `notis reports preview <dir>`. Verify desktop/mobile layout and actual intended interactions. This does not deploy the app.
-5. Discover and inspect save/read schemas. `notis reports save <dir> --database-id <id> --title <title> --context-file <file>` builds and verifies before native persistence. Add `--document-id` and a freshly read `--expected-revision` for updates; use `--attach` for an existing record without a view. Use `--properties-file` for schema-keyed properties. Retain the record ID and unrelated properties.
-6. Read back record, database, revision, artifact and URL. Inspect the saved native surface. Report persistence and visual verification separately when authenticated rendering is unavailable.
-7. Return the native document link. Do not substitute downloads, sandbox exports, raw payloads or app deployment.
-
-Legacy fixed `notis-report/v1` payloads are unsupported. Report revisions replace the current report state; this workflow does not promise an archive of earlier revisions. Separate report records retain separate implementations.
+1. Reconcile document identity before creating. Search existing reports for the same task; corrections revise the existing document. Do not choose a database destination or create/install an app.
+2. For a revision, read `LOCAL_NOTIS_DATABASE_GET_DOCUMENT` and download its short-lived `report_source_url`. Preserve document identity. For a new report, use `notis reports init <name> <dir>`; the scaffold sets `kind: 'report'` and has no owned resources.
+3. Author one route with the normal SDK and view design patterns. Discover and declare exact tool names. Optional existing data sources use `databaseAccess: [{ id, access: 'read' | 'write' }]`, not `databases`. Reads use normal view hooks; writes/sends require user actions and the trusted host confirmation. Do not add a report-specific persistence or refresh system. Reports are private; no sharing or bundled skills/automations.
+4. Keep readable structure and data-source context in a separate file; do not present this saved text as current live values. Build with `notis reports build <dir>`, then verify/preview with the normal tooling. Inspect layout and intended interactions. No app deployment is involved.
+5. Discover and inspect save/read schemas. `notis reports save <dir> --title <title> --context-file <file>` builds and verifies before persistence. Updates add `--document-id` and a freshly read `--expected-revision`. There are no database/properties/attach flags.
+6. Read back identity, null database, revision, artifact, source and URL. Verify live reads and user actions on the saved Portal surface. `reports verify --mode live --document-id <id> --expected-revision <n>` can exercise saved read permissions; its headless harness never authorizes mutations. Report persistence and visual validation separately when authenticated rendering is unavailable.
+7. Return the native document link. Saving changes that report only. Use `notis-report/v3`; older report formats are unsupported, with no migration path or promise of a revision archive.
 
 ## Author and save HTML
 
