@@ -522,6 +522,23 @@ The App Details ⋯ menu offers **Unpublish** when there's an active submission:
 
 Already-installed copies of an unpublished app keep working until users uninstall them — un-listing affects discovery and new installs only.
 
+### Screenshot framing
+
+`notis apps screenshot` measures the rendered app rather than assuming it fills
+the viewport. For a centred, width-constrained app, the capture follows layout
+wrappers only when they contain the entire visible app. Separate headers and
+split panes stay together; a single card or column is never chosen from a larger
+layout. Short bounded views are captured at their final display resolution and
+fitted in full. Long narrow pages use a width-fitted desktop viewport, showing
+the first screen instead of shrinking the whole document into a miniature.
+The compositor preserves the capture's aspect ratio without further cropping.
+The final PNG remains 2000×1250. Explicit focus selectors take precedence;
+`--raw` retains the viewport capture without automatic content framing.
+
+Keep generated design previews outside the Portal source tree (for example in
+gitignored `.context/`). The Store gallery reads listing media, not local fixture
+PNG paths.
+
 ### Why publishing requires explicit confirmation
 
 Listing media (screenshots, tagline, category) lives in `notis.config.ts` and `metadata/` because it travels with the source. Store submission is outward-facing and remains separately user-gated: deploy approval is not Store approval. `apps publish --confirm-ready` exists so an agent can complete the confirmed workflow without bypassing App Details safeguards; it rejects missing confirmation, incomplete listing media, a local/deployed version mismatch, private visibility, and existing pending review.
