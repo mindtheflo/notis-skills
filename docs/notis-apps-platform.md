@@ -403,6 +403,17 @@ owned by `portal/src/lib/appTemplateGallery.ts`; the Store entrypoint uses the s
 Scaffolding and source changes stay local until verification passes. The engineering `dev.sh`
 stack, CLI worktree profiles and coding-agent bridges remain independent of app delivery.
 
+Registry publication stamps the runtime manifest with the numeric Store release sequence
+and the package `app.release_version`. Earlier Store installs may lack the private-deployment
+`manifest.version`; runtime access and bundled-skill sync recognize their persisted Store
+installation receipt only when the running bundle matches the installed baseline. This
+compatibility does not activate unreleased private containers or replacement bundle URLs.
+App list/detail expose this decision as `runtime_version` for Workspace visibility; it
+does not change `current_version` or the private deployment optimistic-lock base.
+Runtime route resolution honors explicit `export_name`, current CLI path exports, and the
+deterministic underscore-prefixed path exports in existing registry bundles. Multi-route
+bundles must resolve a route-specific export; arbitrary minified-export guessing is rejected.
+
 ### Source-owned skills and onboarding
 
 Declare skills in `notis.config.ts` with stable `key`, `name`, and source `path`. A path may be a
@@ -488,7 +499,7 @@ What happens to relationships when you fork:
 ### App Details publish flow
 
 1. **Pick visibility.** On the App Details page (`/apps/[appId]`), the owner picks **Personal**, **Team**, or **Public** in the visibility selector. Personal hides the publish CTA — the app is private to the owner. Visibility persists on the `apps` row.
-2. **Submit the confirmed listing.** With Team or Public selected, the owner clicks **Publish/Update**, or an agent with explicit approval runs `notis apps publish --confirm-ready`. The CLI checks local listing readiness, confirms `.notis/state.json` matches the current deployed version, blocks duplicate pending reviews, and then sends only `{ app_id }` to `/portal_apps/publish`. The server reads `apps.visibility` and listing metadata from the deployed `manifest.json` (`title`, `tagline`, `categories`, screenshots from `metadata/`, and parsed entries from the root `CHANGELOG.md`).
+2. **Submit the confirmed listing.** With Team or Public selected, the owner clicks **Publish/Update**, or an agent with explicit approval runs `notis apps publish --confirm-ready`. The CLI checks local listing readiness, confirms `.notis/state.json` matches the current deployed version, blocks duplicate pending reviews, and then sends only `{ app_id }` to `/portal_apps/publish`. The server reads `apps.visibility` and listing metadata from the deployed `manifest.json` (`title`, `tagline`, `categories`, screenshots from `metadata/`, and parsed entries from the root `CHANGELOG.md`). The async publish handler offloads synchronous source uploads and GitHub work to a worker thread, then awaits the same submission result; publication must not block unrelated runtime or sidebar requests.
 3. **Publish behavior depends on visibility:**
    - **Team** (`visibility='team'`): instant. Server upserts an `app_store_listings` row with `channel='team'`, `review_status='published'`, and the manifest metadata. Anyone on the team can install it from the Team section of `/store` immediately.
    - **Public** (`visibility='public_store_hidden'`): server opens a PR on `mindtheflo/notis-apps`, assembling the complete editable `apps/<slug>/` source tree plus `notis-listing.json` and Store screenshots. The listing metadata carries a reviewable install snapshot: the exact schema of every source-declared database, only rows from databases with `seedDocuments: true`, and bundled app resources. Registry CI validates source, schemas, seed privacy budgets, screenshot dimensions/size/alt text, type safety, bundle size, and forbidden patterns. On merge it builds the bundle, signs an HMAC payload containing that install snapshot, and POSTs to `/registry_publish`; the handler upserts a fully installable public `app_store_listings` row.
@@ -496,6 +507,8 @@ What happens to relationships when you fork:
    **What’s New** is the first entry in the latest published `CHANGELOG.md`; **Version History** renders every entry from that same file. Because the latest file is authoritative, editing an older entry and publishing again updates that past Store entry instead of leaving an immutable database copy behind.
 5. **Visibility is locked while a listing is live.** Once an active submission exists (pending review or merged), the visibility selector is disabled. The owner must Unpublish before flipping between Team and Public.
 6. **Conflict resolution lives at install time, not publish time.** When a Team or Public listing updates, propagation applies the new snapshot automatically to clean installs and compatible customization overlays. Installs with conflicting customizations move to `needs_resolution` and surface the App Details resolution flow through `/portal_apps/update/resolve`; `/portal_apps/update/apply` remains the explicit clean-apply endpoint. The publisher is not asked to resolve installers' conflicts.
+
+Store update preparation reserves and releases skill-archive cleanup leases on the app row. Before the final update, refresh that revision only after comparing every other app field (including lifecycle, ownership and bundle membership); never accept an intervening semantic edit. Database compensation must fence on the actual write response, because database triggers may replace the requested timestamp.
 
 If an installed Public store app is **modified and republished as a new app** (a fork), the backend clears `apps.source_listing_id` on the developer's installed copy after the new submission opens. That copy stops receiving upstream update notifications and owns its new lifecycle. The original listing keeps updating its other installs untouched. See [Forking an existing app](#forking-an-existing-app-1).
 
@@ -976,7 +989,7 @@ Roll out database ownership in this order:
 Notis Apps render as React components directly inside the portal's React tree.
 
 The portal dynamically imports the app's ES module bundle, resolves the route component by its `export_name`, creates a dedicated `ShadowRoot` for the app surface, and renders the route into that shadow tree inside a `NotisProvider` with a real `NotisRuntime`. This gives apps:
-- instant route switching (no iframe reload)
+- instant route switching (no document reload)
 - shared auth and routing with the portal
 - direct React context access for data operations
 - error isolation via React Error Boundaries
@@ -1601,9 +1614,11 @@ These rules are the canonical platform assumptions:
 
 1. **Vite + React only** -- No Next.js, no custom server.
 2. **ES module bundle** -- `notisViteConfig()` produces a library-mode bundle with React externalized.
-3. **Component rendering** -- Apps render as React components directly in the portal. No iframes.
+3. **Component rendering** -- All SDK apps and SDK reports render as React components in the same Shadow DOM host, regardless of source or installation provenance. No SDK app iframe runtime.
+
+   **Trust boundary:** Shadow DOM isolates styles, not JavaScript or credentials. A loaded SDK bundle shares the Portal browser context. Backend ownership, declared tools, capabilities, billing, report-action confirmation and resource revisions remain enforced on the supported SDK/API path; they are not a sandbox against arbitrary same-origin bundle JavaScript. Store review and accepted source provenance are therefore code-trust decisions. Plain HTML documents remain separately sandboxed in `HtmlDocumentFrame`; they are not a second SDK runtime.
    The portal mounts each app into a shadow-scoped surface and injects the runtime provider itself.
-4. **HTTP bridge for data** -- Use fetch for data operations. postMessage only for resize/navigation.
+4. **HTTP bridge for data** -- SDK operations use the authenticated runtime bridge; sizing and navigation stay in the shared host.
 5. **Declarative tools** -- Declare in `notis.config.ts`, enforced server-side.
 6. **Database refs only** -- Declare database slugs in `notis.config.ts`. A string packages schema only; `{ slug: 'templates', seedDocuments: true }` explicitly includes that database's small, non-personal starter dataset in Store snapshots. Database schema is managed through native database tools, not through app deploys.
 7. **Phosphor icons, not emojis.**
@@ -1683,7 +1698,7 @@ If a collection-tree sidebar appears missing, do not redesign the app around tha
 
 ## Instant-view lifecycle and cache ownership
 
-The authenticated layout retains at most three visited app shells, including while Manager, documents or ordinary product pages are selected. Unvisited pages are never mounted speculatively. Same-app navigation changes only the route export inside the existing shell; Store installations retain their sandboxed frame, nonce checks and scoped RPC boundary. Hidden shells cannot publish page context, claim top-bar search, or initiate navigation. Without an active app target every retained shell is hidden and inactive; leaving the authenticated layout or changing the session retires them.
+The authenticated layout retains at most three visited app shells, including while Manager, documents or ordinary product pages are selected. Unvisited pages are never mounted speculatively. Same-app navigation changes only the route export inside the existing shell; Authored apps, Store installations, duplicates and SDK reports all use the same React/Shadow DOM host and scoped runtime bridge. Hidden shells cannot publish page context, claim top-bar search, or initiate navigation. Without an active app target every retained shell is hidden and inactive; leaving the authenticated layout or changing the session retires them.
 
 `AppOpeningBoundary` owns the entire host opening sequence (lazy route module, authorized descriptor, bundle and stylesheet). It shows no fake page or dashboard skeleton. A single small indicator appears only after 150 ms of continuous preparation; handing off between stages does not restart that delay. The indicator is a compact 28px pill anchored at the bottom center of the non-scrolling app-view viewport (`SidebarInset`), excluding the sidebar, with safe-area clearance, opaque inverse-theme colors, a 5px Notis-green pulse, and a scaled-down layered overlay shadow. Its label is “Opening”; the recovery state stays compact with “Still opening” and Retry. The pulse respects reduced-motion preferences. It sits above app content without covering the page with a blocking layer. After 20 seconds the indicator offers recovery. Once the real app has mounted, only the app owns missing-data placeholders. Isolated Store frames report render readiness to this same parent boundary; they do not display a second host loader.
 
@@ -1701,19 +1716,21 @@ Fully materialized apps reuse their app-owned database rows without consulting l
 
 `internalNavigation.ts` dispatches shared navigation through the save guard; `appViewNavigation.ts` owns persistent installed-app selection. It uses the Next-integrated native History API, with synchronous client-shell selection; non-view routes still use normal router navigation. This avoids a competing RSC transition that can commit an old URL after the new view paints.
 
-Clicked destinations and back/forward navigation start their authorized lightweight descriptor in parallel with the lazy route module. These foreground preparations run at foreground priority, so they are never held behind the speculative queue’s concurrency limit, and they share the same scoped descriptor/asset promises. Isolated apps download their bundle bytes while their sandboxed host boots; they still execute only inside that frame. Host-provided rich-text and Markdown editors load on demand, with an editor-local accessible placeholder, so non-editor views do not wait for editor code.
+Clicked destinations and back/forward navigation start their authorized lightweight descriptor in parallel with the lazy route module. These foreground preparations run at foreground priority, so they are never held behind the speculative queue’s concurrency limit, and they share the same scoped descriptor/asset promises. Every SDK bundle uses the same loader and Shadow DOM mount. Host-provided rich-text and Markdown editors load on demand, with an editor-local accessible placeholder, so non-editor views do not wait for editor code.
 
-Retained hosts keep a stable DOM order independently of their LRU order: moving an iframe in the DOM can recreate its browsing context. The isolated host receives theme state from its parent bridge and must never require local/session storage or `allow-same-origin`.
+Retained hosts keep a stable DOM order independently of their LRU order, preserving the Shadow DOM and mounted React shell. Bundle modules, styles and reads remain scoped by account, environment, app/report identity, release and effective permissions. Per-request cache keys include the route context; resource changes must not reuse a rejected read from another resource. All SDK bundles receive theme tokens and Portal contexts through the same host. There is no separate iframe host, postMessage SDK bridge or iframe-specific editor overlay.
 
 Retained component-host wrappers must preserve a definite `height: 100%` and must not flex-shrink. Otherwise the renderer's percentage-height chain resolves to content height and split layouts stop above the viewport bottom, especially with short skeletons or empty states. Do not position these wrappers: the opening pill anchors to `SidebarInset`.
 
 For split-view sizing changes, check the real Portal with delayed initial reads and again after content resolves, including a resize. From `portal/`, run `node scripts/smokes/check-split-app-viewport.cjs --session <named-browser-session> --app-id <id> --state loading` (then `--state loaded`). The read-only check verifies top, bottom and horizontal viewport boundaries plus desktop pane heights; it fails if the requested loading state is absent. Standalone app-harness screenshots do not prove the Portal's parent-height chain.
 
-The SDK cache reads successful snapshots synchronously, including empty arrays and null documents. `loading` denotes a missing initial response; `isFetching` also covers background refresh. Query keys include exact arguments. The host scopes caches by account/session, API environment, runtime app, bundle version and effective permissions. Query clients retain at most 100 idle entries each, 24 recent app/permission scopes; route detail and asset caches are bounded separately. Active subscriptions pin entries until detached. No persistent offline storage is introduced.
+The shared Shadow DOM frame supplies a definite content-panel height for every app provenance. App panes opt in to full-height layout; normal document pages retain natural overflow. Verify both top and bottom pane edges, tall-to-short resizing, resource changes and long-content scrolling in the actual Portal, not only a standalone harness.
+
+The SDK cache reads successful snapshots synchronously, including empty arrays and null documents. `loading` denotes a missing initial response; `isFetching` also covers background refresh. Query keys include exact arguments. The host scopes caches by account/session, API environment, runtime app, bundle version and effective permissions. Query clients retain at most 100 idle entries each, 24 recent app/route/resource/permission scopes; route detail and asset caches are bounded separately. Active subscriptions pin entries until detached. No persistent offline storage is introduced.
 
 Descriptor and asset reads have a 15-second deadline. SDK cached reads default to a 30-second deadline, expose a scoped error on expiry, and retain any successful snapshot. Deadlines do not replay callbacks or mutations; late results cannot replace a successful retry. A tool call inside a custom read must itself carry `readOnly: true` (the outer `useQuery` option does not implicitly classify nested calls). Prefer `useToolQuery` for a simple tool read; it forwards that classification. An unmarked generic SQL/tool call invalidates app queries after completing, which makes it unsuitable inside a cached read and can invalidate its own result before commit.
 
-Returning to a retained app after the default 30-second freshness window invalidates its mounted reads after paint, including reads inside a Store frame. Cached content stays visible while they refresh; retaining the shell must not bypass refresh merely because its hooks never remounted.
+Returning to a retained app after the default 30-second freshness window invalidates its mounted reads after paint, for every app provenance. Cached content stays visible while they refresh; retaining the shell must not bypass refresh merely because its hooks never remounted.
 
 Mounting or navigating to a view honors the descriptor cache's 30-second freshness window. Realtime changes, app changes, asset errors and explicit retry force an authorized descriptor refresh; merely finding cached content does not force a redundant request. This does not change runtime-call authorization or the account, version and permission cache boundaries.
 
@@ -1725,7 +1742,7 @@ Writes, realtime and explicit refresh advance generations, so neither the query 
 
 Installed app changes invalidate authorized descriptors and permission-scoped reads. Local source edits do not publish discovery events or alter mounted release state.
 
-Hover/focus and newest-first chat-link preparation fetch authorized light destination descriptors and asset bytes without evaluating Store code in the Portal. The speculative asset snapshot cache is bounded to 48 entries / 16 MiB and cleared on session/app invalidation. App-owned `useQueryClient().prefetch` calls share a two-slot queue with host preparation, including isolated frames. Only small explicitly read-only requests qualify; full collections, provider sweeps, fan-out aggregates and mutations remain foreground actions.
+Hover/focus and newest-first chat-link preparation fetch authorized light destination descriptors and asset bytes without evaluating Store code in the Portal. The speculative asset snapshot cache is bounded to 48 entries / 16 MiB and cleared on session/app invalidation. App-owned `useQueryClient().prefetch` calls share a two-slot queue with host preparation. Only small explicitly read-only requests qualify; full collections, provider sweeps, fan-out aggregates and mutations remain foreground actions.
 
 The shared document/history/save and recent-chat preparation contract is owned by the Portal navigation code under `portal/src/`.
 
@@ -1767,6 +1784,8 @@ paths preserve the author's configuration and PostCSS plugins; neither rewrites
 the app's source files.
 
 ## Independently authored reports and passive feedback
+
+SDK reports use this same Shadow DOM renderer with a viewport-height frame and natural vertical scrolling for long pages. They retain their document/revision identity, declared-tool permissions and explicit action confirmation. Host document editors remain unavailable to report code; edits use declared tools. Plain HTML is a separate document format, rendered in `HtmlDocumentFrame`, not a second SDK app runtime.
 
 App views retain their shared implementation across records; reports do not deploy or replace that implementation.
 
