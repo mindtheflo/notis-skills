@@ -16,7 +16,7 @@ For an isolated, reproducible environment use the Vercel Sandbox. Peekaboo
 needs the live macOS Aqua session, the screen, and TCC permissions, so it only
 runs on the user's `local_shell`.
 
-## Step 0 — Switch to the LOCAL shell FIRST (mandatory)
+## Step 0: Switch to the LOCAL shell FIRST (mandatory; Cloud agents see below)
 
 Peekaboo controls the user's physical Mac, so every command must run on the
 **local shell** (the Notis desktop bridge), never the Vercel sandbox. Shell
@@ -39,6 +39,11 @@ touch the Mac.
 
 Never `cd /vercel/sandbox` or assume a sandbox working directory — run
 `peekaboo` directly on the local shell.
+
+Codex and Claude agents in the Cloud Computer have no `set_shell_mode`. Skip
+it and run each command in this skill on the Mac with
+`notis tools exec LOCAL_NOTIS_RUN_DESKTOP_SHELL --arguments '{"command": "...", "timeout_ms": 60000}' --timeout-ms 90000`;
+its errors mean the same as above.
 
 ## Read-only status checks — shortest verified loop
 
@@ -203,7 +208,9 @@ control instead.
 
 ## Anti-Patterns
 
-- Do not run `peekaboo` before calling `set_shell_mode` with `local_shell`. The
+- Do not run `peekaboo` before calling `set_shell_mode` with `local_shell`
+  (Codex and Claude agents in the Cloud Computer: run it through
+  `LOCAL_NOTIS_RUN_DESKTOP_SHELL` instead). The
   default `sandbox_shell` runs it in `/vercel/sandbox`, where Peekaboo does not
   exist — the command "fails" and looks like a permissions problem when it
   isn't.
