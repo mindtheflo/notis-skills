@@ -76,5 +76,5 @@ Use the managed CLI's help for exact flags. The v4 surface is:
 For multi-step flows, orchestrate separate plain CLI calls through the local
 shell tool. Peekaboo 4 removed `run` and its `.peekaboo.json` script format,
 `hotkey`, `image`, and CLI `inspect-ui`. Do not restore those old spellings or
-bypass the single-command rule with a shell script. AI analysis and `agent`
-require separate provider configuration and are not the default capture path.
+bypass the single-command rule with a shell script. Never use AI analysis or
+`agent`: they call a separately configured model provider with its own API key.

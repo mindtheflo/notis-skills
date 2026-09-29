@@ -29,6 +29,21 @@ Before creating files, clarify:
 - **scripts/** — Optional. Executable code (Python, Bash, etc.) the assistant can run.
 - **references/** — Optional. Documentation or reference files loaded on demand.
 - **assets/** — Optional. Templates, images, or other files used in outputs.
+- **State** — Required whenever the skill keeps anything between runs: history,
+  progress, approvals, queues, caches or results. Skills can run on the Notis backend,
+  where local files do not survive, so plan a Notis database now:
+  - Reuse a fitting database (`LOCAL_NOTIS_DATABASE_LIST_DATABASES`) or create one with
+    `LOCAL_NOTIS_DATABASE_UPSERT_DATABASE` (operation `create`, `app` = the app the
+    skill belongs to). Name its key property and the fields each run reads and writes.
+  - Tell the skill to write rows with the `row_write_tool` that
+    `LOCAL_NOTIS_DATABASE_GET_DATABASE` returns for the database slug, never a
+    hard-coded generated tool name.
+  - Documents the user keeps go to Notis documents or reports, not local files.
+  - Scripts write only scratch, in a temporary directory. A skill never writes into its
+    own folder: skill sync uploads that folder.
+- **Model work** — Generation, classification and research belong to the agent running
+  the skill or its sub-agents. Ship a script that calls a model provider API only when
+  the user explicitly asks for it.
 
 ### Step 3: Initializing the Skill
 
@@ -113,6 +128,7 @@ description: "Clear description of what the skill does and when to use it."
 2. **Good description** — The description is used to decide when to invoke the skill; make it searchable and precise.
 3. **Stable structure** — Use `scripts/`, `references/`, `assets/` consistently so users and tools know where to find things.
 4. **Validate before packaging** — Check frontmatter, naming, and that all referenced files exist.
+5. **State lives in Notis** — Anything a later run needs is a Notis database row or document, never a file in the skill folder or on the machine.
 
 ## Notis-Specific Notes
 

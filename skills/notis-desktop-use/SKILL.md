@@ -76,9 +76,10 @@ requested window, and no reusable snapshot or mutation authority is available.
 If accessibility text is insufficient, use the command-and-capture guide.
 A successful screenshot command only proves a file was captured: a path in
 shell stdout does **not** mean you have seen its pixels. Do not claim visual
-verification without an available image-reading tool. Do not use Peekaboo's
-`--analyze` as a default workaround; it requires a separately configured AI
-provider and adds another model loop. Report any remaining visual limitation.
+verification without an available image-reading tool. Never use Peekaboo's AI
+paths (`--analyze`, `see` analysis or `peekaboo agent`): they send captures to a
+separately configured model provider with its own API key. Do the visual reasoning
+in the current harness. Report any remaining visual limitation.
 
 ## Peekaboo is already installed — do not install it
 
