@@ -45,6 +45,28 @@ Before creating files, clarify:
   the skill or its sub-agents. Ship a script that calls a model provider API only when
   the user explicitly asks for it.
 
+### Intelligence and invocation overrides
+
+- Declare `low`, `medium`, or `high` for each delegated step according to its work;
+  use `high` when the skill does not specify a level. Do not embed vendor model
+  names, version pins, family aliases, price tables or a separate effort mapping
+  in instructions, scripts, templates or examples.
+- Use `LOCAL_NOTIS_GET_INTELLIGENCE_POLICY`, directly or through the authenticated
+  Notis CLI, for both the shared `contract` and current harness mapping. Use this
+  same runtime contract in repository and account-installed skills; never require
+  a checkout-relative `docs/` link for intelligence guidance. Resolve model and
+  effort together; do not infer effort from the level.
+- Explicit user choices in this invocation override skill defaults, including a
+  requested exact model or effort. Do not change saved account defaults unless asked.
+- A fixed-model harness inherits its current configuration and reports that the
+  requested level was not applied. Automated launchers requiring an exact selection
+  stop before side effects if the live policy is unavailable; never guess a fallback.
+- Request media through discovered capabilities, not hard-coded image/audio/video
+  engine names. Preserve actual-model receipts as provenance; never store a level
+  where a schema requires the identifier that actually generated the result.
+- Validate with a changed policy, an explicit override, an unsupported harness and
+  an unavailable lookup. Weekly mapping changes must not require editing the skill.
+
 ### Step 3: Initializing the Skill
 
 At this point, it is time to actually create the skill.
