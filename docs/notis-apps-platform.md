@@ -1245,7 +1245,7 @@ return available ? (
 
 - **`prompt`** is optional. When omitted, the composer opens with the app/database pills plus the current page or active-resource context supplied by the host, so the user can write in their own words. This is appropriate for feedback buttons.
 - **`skill`** is a key from `notis.config.ts` -> `skills[].key`. The host rejects a key the app does not declare and a skill that is not installed for the app, so app code can never point the manager at something the user did not get with the app. Omitted, the work is handed over without a skill binding.
-- **`autoSend`** is reserved for forward compatibility. Current Portal hosts always open the complete prepared message — `@App @Database… /Skill <prompt>` — for the user to read and send, and resolve `drafted`; they never silently discard mentions or submit on the user's behalf.
+- **`autoSend`** submits the complete prepared message — `@App @Database… /Skill <prompt>` — only when `handover()` starts during an active user gesture such as a button click. Background calls open a draft. The normal chat send path retains progress, cancellation and failed-draft recovery. `sent` requires the host's accepted submission, not merely opening the composer; absent hosts and failed submissions resolve `drafted`.
 - **`available` is honest.** Hosts without a manager chat (the temporary `apps verify` harness, the vite preview) leave `runtime.handover` undefined and `available` false. Keep the app's own fallback — a copyable prompt — for those, as above.
 
 This is the same machinery as the sidebar's **Onboarding** entry, which is `notis.config.ts` -> `onboarding: { skill, prompt }` handed over the same way; `handover()` lifts it out of onboarding so any button in any view can use it.
