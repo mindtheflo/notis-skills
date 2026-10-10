@@ -33,8 +33,9 @@ Before creating files, clarify:
   progress, approvals, queues, caches or results. Skills can run on the Notis backend,
   where local files do not survive, so plan a Notis database now:
   - Reuse a fitting database (`LOCAL_NOTIS_DATABASE_LIST_DATABASES`) or create one with
-    `LOCAL_NOTIS_DATABASE_UPSERT_DATABASE` (operation `create`, `app` = the app the
-    skill belongs to). Name its key property and the fields each run reads and writes.
+    `LOCAL_NOTIS_DATABASE_UPSERT_DATABASE`, linked to the Space the skill belongs to
+    with its main view (see the notis-query database discovery reference). Name its key
+    property and the fields each run reads and writes.
   - Tell the skill to write rows with the `row_write_tool` that
     `LOCAL_NOTIS_DATABASE_GET_DATABASE` returns for the database slug, never a
     hard-coded generated tool name.
@@ -109,8 +110,8 @@ Create any supporting files in the appropriate directories:
 ### Step 5: Save or update the exact skill
 
 Discover the native skill tools and read the current installed skill list first.
-Resolve the existing skill by exact id, owner and any app binding — never pick the
-first name match. An edit updates that id; creation is only for genuinely new skills.
+Resolve the existing skill by exact id, owner and Space links (as listed by
+`LOCAL_NOTIS_LIST_SKILLS`); never pick the first name match. An edit updates that id; creation is only for genuinely new skills.
 
 - Single-file creation: use discovered `LOCAL_NOTIS_CREATE_SKILL` with name,
   description and skill_md. Single-file edit: `LOCAL_NOTIS_UPDATE_SKILL` with
@@ -120,8 +121,9 @@ first name match. An edit updates that id; creation is only for genuinely new sk
   upload path with the discovered CREATE or UPDATE tool (UPDATE includes skill_id).
   Do not wait for an invented public-URL notification or drop existing resources.
 - Curated skills are maintained in their canonical source and published separately;
-  normal user-skill updates cannot replace curated content. App-owned source
-  changes follow that app's release boundary; editing instructions is not deployment.
+  normal user-skill updates cannot replace curated content. A Skill linked in
+  Spaces is one shared resource: an edit changes it in every Space that links it,
+  and a Space source deploy commits its changed Skill folders with the release.
 - Validate frontmatter, resource paths and intended changes; dry-run the mutation.
   Read back the same id, content and preserved assignments; for bundles verify the
   full resource set. An update must not increase the installed record count.

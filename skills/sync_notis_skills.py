@@ -36,6 +36,7 @@ from server.lib.curated_skill_channels import (
 from server.lib.curated_skill_metadata import (
     feature_flag_from_skill_md,
     required_entitlements_from_skill_md,
+    stored_curated_skill_feature_flag,
     validate_metadata_key,
 )
 from server.lib.feature_flags import CURATED_SKILL_FEATURE_FLAGS
@@ -402,7 +403,9 @@ async def push_skill(
         # Frontmatter is the source of truth for independent visibility and
         # billing policy. Omitted entitlements normalize to no extra gate;
         # legacy `skills` entries are dropped because Skills are all-tier.
-        update_fields["required_feature_flag"] = feature_flag
+        # The flag is stored as every running release reads it (Beta and
+        # production share this row): see STORED_SKILL_VISIBILITY_FLAGS.
+        update_fields["required_feature_flag"] = stored_curated_skill_feature_flag(feature_flag)
         update_fields["required_entitlements"] = required_entitlements
         supabase.table("curated_skills").update(update_fields).eq("openai_skill_id", openai_skill_id).execute()
     return True, version
@@ -597,7 +600,7 @@ async def run_sync(
                         "category": category,
                         "is_default": is_default,
                         "sort_order": sort_order,
-                        "required_feature_flag": required_feature_flag,
+                        "required_feature_flag": stored_curated_skill_feature_flag(required_feature_flag),
                         "required_entitlements": required_entitlements,
                         **channel_fields,
                     }).eq("id", row["id"]).execute()
@@ -609,7 +612,7 @@ async def run_sync(
                         "openai_skill_id": new_id,
                         "is_default": is_default,
                         "sort_order": sort_order,
-                        "required_feature_flag": required_feature_flag,
+                        "required_feature_flag": stored_curated_skill_feature_flag(required_feature_flag),
                         "required_entitlements": required_entitlements,
                         # Base skill_md is NOT NULL; seed it on every channel so a
                         # brand-new skill can be bootstrapped dev/beta-only (without

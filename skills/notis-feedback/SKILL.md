@@ -1,7 +1,7 @@
 ---
 name: notis-feedback
 description: Gather passive user feedback on an SDK-powered report or app view through selected-text comments, app-defined annotations and generic chat context pills.
-feature_flag: store
+feature_flag: spaces
 mcp_resource: true
 mcp_tool_patterns: []
 ---

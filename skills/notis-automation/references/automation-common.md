@@ -30,5 +30,7 @@ Common `LOCAL_NOTIS_INSERT_AUTOMATION` fields:
 - `LOCAL_NOTIS_RUN_AUTOMATION` fires immediately (good for a test) and returns a `run_id`.
 - `LOCAL_NOTIS_LIST_AUTOMATION_RUNS` shows whether each run produced a delivered message (`delivery_detected`) — use it to confirm an automation actually works.
 - `LOCAL_NOTIS_UPDATE_AUTOMATION` changes any field except `trigger_type`; set `status` to `paused`/`active` to disable/enable. Automations synced from a team template (`automation_template_id` present) lock `name` and `prompt` — tell the user to duplicate it to edit.
+- `links` lists the automation in Spaces the user edits: `LOCAL_NOTIS_INSERT_AUTOMATION` takes `links.add` (the automation is created in the first Space's tree), `LOCAL_NOTIS_UPDATE_AUTOMATION` takes `add` and/or `remove` with a stable `request_id`, alone or with other fields (links change first; the result says exactly what changed). A move is one add plus one remove. `LOCAL_NOTIS_GET_AUTOMATION` returns the current `links` with each `binding_id`/`binding_revision`; removing the last available link keeps it as the user's own automation, paused if it was active.
+- An Editor of a Space that lists an automation can change its prompt, name, schedule, status and run preferences without owning it. Only the person who set it up can change its connection (`channel`, `channel_account`, integration or database trigger); the automation keeps running as its owner.
 
 ---

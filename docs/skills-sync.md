@@ -11,6 +11,13 @@ Use this doc when the work is about:
 
 For product lifecycle decisions such as whether a skill is custom, curated, community, or synced, start with [Notis Skills Lifecycle](./notis-skills-lifecycle.md).
 
+The isolated Spaces migration uses the same native Skill identity/content writer
+for direct and Space edits (`notis skills read|create|update`). Moving or removing
+a resource link is not permission to replace that Skill's local files or reset
+personal enabled/agent-target settings. Shared authoring discovery and automatic
+agent execution/sync inventories are distinct authority surfaces: listing a
+Space-only Skill must not implicitly auto-mount it into every local agent.
+
 ## Two Sync Paths
 
 Notis has two separate skill sync systems:
@@ -61,7 +68,7 @@ Important flags:
 
 The script discovers repo-maintained skills dynamically: **every `server/skills/<name>/` folder that contains a `SKILL.md`** (`discover_repo_skills`). Adding a new skill folder makes it syncable with no script edit. A subset — `DEFAULT_OUR_SKILLS` in the script — is marked `is_default = true` on bootstrap, which auto-installs it for eligible users; experimental/opt-in skills are intentionally left out of that set.
 
-`notis-reports` is in that default subset and declares `feature_flag: store`. It is therefore auto-installed only for users eligible for Store features, without adding a CLI base skill or a separate Notis App. `notis-feedback` shares the Store flag but is not in the default auto-install subset; it is an opt-in entrypoint to the [shared feedback reference](../server/skills/notis-reports/references/feedback.md).
+`notis-reports` is in that default subset and declares `feature_flag: spaces`. It is therefore auto-installed only for users eligible for Spaces features, without adding a CLI base skill or a separate Notis App. `notis-feedback` shares the Spaces flag but is not in the default auto-install subset; it is an opt-in entrypoint to the [shared feedback reference](../server/skills/notis-apps/references/context.md).
 
 ### Access metadata
 
@@ -253,6 +260,128 @@ Server endpoints live in `server/routers/portal_skills/_1_code/entry.py`:
 
 ### Local Scope
 
+#### Native Skill cutover contract
+
+Native standalone Skills use sync protocol 2, exact Notis identity, current access
+revision and content version. The local provenance sidecar is never uploaded as
+Skill content. Renaming a local folder does not create another cloud Skill.
+Failed or unreadable local scans are not permission to replace existing native
+files. Local/cloud conflicts preserve the local files and accepted version; only
+verified current content is advertised through managed agent links.
+
+Personal enablement and agent targets have a separate native settings revision.
+They do not edit shared instructions or disable use through another Space.
+For a Skill linked in a Space, each Editor keeps their own settings in
+`native_skill_member_settings` (defaults until they change one); the owner of a
+standalone Skill keeps using its own columns. `sync-pull` sends a Space Skill to
+local agents only when the caller can still reach it through a Space link and
+their own settings enable Claude Code, Cursor or Codex; losing the link removes
+it from the next pull. Space Skills keep the same `native-<skill_id>` identity
+and bundle verification as standalone ones, and a local edit of a Space Skill is
+not pushed back (edit it with `notis skills update` or the Portal instead).
+Management/sync can still inspect a personally disabled Skill; execution checks
+the current enabled state and the selected agent target, even for a freshly
+prepared reference. A settings change advances direct-access freshness without
+changing the shared content version. Disabled files remain on disk but are not
+advertised to the local Notis shell. Native link-removal updates use settings CAS
+and refresh the current access pin; they never call the legacy row writer.
+
+Older clients can still update identified legacy rows, but must upgrade before
+creating an unlinked row. They cannot distinguish a new folder from a renamed
+native mirror. Accounts with native direct ownership or retained transition
+history require protocol 2 for all sync. Roll out the updated client before
+enabling standalone transitions; this branch still keeps the public transition
+entrypoint disabled pending complete consumer and Desktop acceptance.
+
+Development sessions return an environment/account-scoped namespace. Their
+mirrors and agent links stay under `~/.notis/skills/environments/<namespace>/`,
+without gathering global personal folders or adopting earlier account state.
+Electron's isolated-development automatic-sync disablement remains in force.
+Development materialization does not establish live Desktop acceptance.
+
+#### Confined development IPC verification (macOS)
+
+The normal worktree Desktop keeps global Skill sync disabled. A reviewed,
+one-attempt fixture can exercise its existing trusted main-frame `skills:sync`
+IPC through a separately supervised **bundled-Node** filesystem worker. This is
+not a shell route, automatic-sync enrollment, global preference change, or a
+replacement for actual renderer/preload/IPC acceptance. Do not sandbox another
+whole Electron GUI: Chromium helper sandbox initialization is a separate
+constraint, and neither Chromium sandbox may be disabled to pass this proof.
+
+Only a worktree development launch admits a fixture: an unpackaged dev launch, or
+the renamed Electron copy `dev.sh` builds under `electron/.dev-dist/` (Electron
+reports that copy as packaged). A release app never does, whatever its environment.
+
+The coordinator owns `.context/desktop-skill-sync-fixture.json` (regular file,
+current uid, mode `0600`) in the running worktree. Never put a bearer in it. Its
+`ConfinedSyncContract` schema is defined in `electron/src/confined-skill-sync.ts`:
+it binds the canonical worktree, current runtime API/primary/dev session/bridge/
+worker build, compiled main and bundled executable SHA-256, issuance/expiry
+(at most 15 minutes), development sync namespace/scope and **two exact native
+references**. The private directory must already exist at
+`/private/tmp/notis-skill-sync-<fixtureId>`, owned by the current uid, mode `0700`.
+It must not contain a prior `home`, `tmp`, attempt, or result. An interrupted
+attempt is evidence, never permission to delete its marker and retry.
+
+Presence of this file holds ordinary Desktop account sync and local-shell
+materialization, including queued/timer callbacks. Consumed, expired, malformed
+and symlink contracts keep that hold until explicit coordinator cleanup. The
+manual IPC joins previously admitted refreshes before starting the fixture
+worker; do not count overlapping pre-existing refreshes as part of a clean
+host-mirror proof window. Outside this fixture, existing behavior is unchanged.
+Only the Skills page's **Sync Now** action marks an IPC request as `manual`.
+Realtime/editor follow-ups, preference-toggle syncs and legacy unmarked callers
+remain disabled during the fixture and cannot consume its attempt. Explicit
+logout or account transition cancels the worker before auth teardown and
+invalidates a waiting request; same-user token rotation does not start another
+attempt. Current main-owned identity is checked again before accepting success.
+
+The worker receives the session bearer only through its private stdin. Its
+environment is rebuilt, not inherited; HOME/config/agent roots and the CLI's
+base, lock, account, scanner, backup and link paths all use the private home.
+The macOS policy denies writes outside the fixture, protects host-home data,
+denies subprocess creation and restricts network to the exact loopback API
+port. Each API request may take up to 90 seconds (live pulls measured 32 to 45
+seconds) inside a 240-second worker deadline. Before using the bearer, the worker checks direct and symlink outside-
+write denial against a disposable canary. It runs the actual CLI sync engine,
+reads authenticated protocol-2 settings and pulls only the two contract-bound
+native references into the fixture. Unexpected cloud pushes, assignment writes
+or external bundle downloads refuse; the proof expects a fresh pull, two
+downloads and six namespace-scoped Claude/Cursor/Codex links. No global
+`sync_enabled` mutation is performed.
+
+After offline tests and independent review, the finite integration procedure is:
+
+1. Start the **same reviewed worktree's** canonical `./dev.sh --with-electron`
+   stack, after any exclusive restore work. Keep dev global-sync disablement
+   and hosted/local execution fences intact. Use neither installed Beta nor a
+   second copied GUI, generic shell route or CDP bypass.
+2. Register one fresh standalone and one fresh Space-linked native Skill under
+   the exact authorized test identity. Verify current native references, binary
+   files and Claude/Cursor/Codex assignments through the canonical native APIs.
+   Use the current authenticated settings namespace/scope, not a guessed value.
+3. Bind the fresh runtime and exact compiled main/executable hashes in the
+   private contract. Quiesce previous refreshes, record protected mirror
+   metadata, and keep the contract present throughout the proof. The normal
+   Skills-page manual action is the only trigger; the renderer supplies no path,
+   principal, fixture, command, API or grant override.
+4. Record the actual renderer → preload → main → confined-worker result and
+   unchanged compiled renderer/preload/main identity. Independently read back
+   both native versions, exact file hashes, binary bytes, namespace, six links,
+   zero failed pushes/links and unchanged protected mirrors/global preference.
+   The private attempt/result receipts bind the contract hash. Process failure,
+   expiry or changed contract/runtime is not completion and is never auto-retried.
+   Verify the touched Skills page in EN/FR at 390px and 1440px before any PR;
+   this transport-only change adds no copy or layout but does not waive that gate.
+5. Join the worker, preserve receipts, reconcile any unknown state, remove only
+   the exact registered native fixtures and private directory/canary artifacts,
+   then remove the contract to release the background hold. Verify both native
+   and local cleanup. Offline tests, standalone Node canaries and worker-only
+   execution cannot substitute for step 4.
+
+#### Account mirror scope
+
 The CLI derives the active sync scope from `user_id` in the authenticated
 `sync-settings` response. That server-returned Notis id is canonical because a
 Desktop Supabase session and a purpose-scoped CLI OAuth token can use different
@@ -318,7 +447,7 @@ through **Assign agents** in the selection bar. Mixed bulk checkboxes preserve
 each skill's other assignments: only touched agents are updated. The Skills
 page shows small agent logos for saved assignments (dimmed for globally disabled
 skills), and its Agents checkbox filter matches any selected agent alongside
-the existing search, source, and app filters. These show saved intent, not a
+the existing search, source, and Space filters. These show saved intent, not a
 claim that a particular computer has finished syncing.
 
 `LOCAL_NOTIS_LIST_SKILLS` includes normalized `agent_targets` for installed
