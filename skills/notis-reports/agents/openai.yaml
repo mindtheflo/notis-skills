@@ -1,4 +1,4 @@
 interface:
   display_name: "Notis Reports"
-  short_description: "Create flexible native interactive Notis reports"
-  default_prompt: "Create a native interactive report document from this work."
+  short_description: "Save reports in Notis Notes or build interactive report views"
+  default_prompt: "Save this work as a report in Notis Notes."

@@ -23,11 +23,13 @@ import sys
 import tempfile
 import zipfile
 
-# Resolve both the server package root and the repository root.
+# Resolve both the server package root and the repository root: the server
+# modules this script imports reach each other as `server.lib.*` and `lib.*`.
 _SERVER_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 _REPO_ROOT = os.path.abspath(os.path.join(_SERVER_ROOT, ".."))
-if _REPO_ROOT not in sys.path:
-    sys.path.insert(0, _REPO_ROOT)
+for _import_root in (_REPO_ROOT, _SERVER_ROOT):
+    if _import_root not in sys.path:
+        sys.path.insert(0, _import_root)
 
 from server.lib.curated_skill_channels import (
     CURATED_SKILL_CHANNELS,

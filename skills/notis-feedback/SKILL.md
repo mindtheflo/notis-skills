@@ -15,4 +15,4 @@ Use the shared [SDK context pattern](../notis-apps/references/context.md) owned 
 3. Use the optional nearby comment box or the app’s own UI. Add each chosen response as an explicit context pill with `useAgentContext()`. Apps own annotation storage; the SDK does not store a separate feedback ledger or send messages. Context can include arbitrary JSON and explicit attachments, such as image coordinates and the image being reviewed.
 4. Use the owning report or app workflow for building, verification and authorized persistence. Feedback does not authorize executing proposals, deploying an app or publishing a Store listing.
 
-For a new report, use `notis-reports`. Plain HTML does not support this SDK pattern.
+For a new report, use `notis-reports`. Plain HTML pages saved in Notis Notes do not support this SDK pattern.

@@ -149,6 +149,8 @@ For upstream `skill-creator`, the sync script renames it to `notis-skill-creator
 
 Repo skills are discovered dynamically in the workflow too — it scans `server/skills/*/SKILL.md` (mirroring the CLI), so a new skill folder is picked up with no workflow edit.
 
+The sync job installs the full `server/requirements.txt`: frontmatter validation imports the server entitlement catalog, which pulls in the billing stack. Its sync step runs under an explicit `bash` shell (pipefail), so a crash before `tee` fails the run. From August to October 2026 the job installed only three packages, the script crashed on that import, and the default shell hid the crash, so runs passed while syncing nothing; after a long gap, compare `curated_skills.openai_skill_version_<channel>` with the run history instead of trusting a green run.
+
 Channel is determined by trigger:
 
 | Trigger | Channel(s) | Source content |
