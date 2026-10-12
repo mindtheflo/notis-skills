@@ -174,7 +174,7 @@ python3 -m unittest server/tests/test_sync_notis_skills.py
 python3 -m unittest server/tests/test_curated_skill_channels.py
 ```
 
-For broader Notis test selection and smoke workflows, use `.agents/skills/tools/notis-tests/SKILL.md`.
+For broader Notis test selection and smoke workflows, use the installed Coding Skill `notis-tests`.
 
 ## Local-Agent Sync
 
