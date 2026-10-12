@@ -271,6 +271,13 @@ Failed or unreadable local scans are not permission to replace existing native
 files. Local/cloud conflicts preserve the local files and accepted version; only
 verified current content is advertised through managed agent links.
 
+The one exception is a legacy folder (no provenance sidecar, legacy sync state)
+that the cloud now serves as a native Skill. When the folder is unchanged since
+the last sync, it upgrades in place: files the cloud provides take the native
+version and local-only files are kept. Until that write succeeds, the folder
+keeps its agent links and its legacy sync state, so a failed upgrade retries on
+the next sync instead of unlinking a Skill that was already in use.
+
 Personal enablement and agent targets have a separate native settings revision.
 They do not edit shared instructions or disable use through another Space.
 For a Skill linked in a Space, each Editor keeps their own settings in
