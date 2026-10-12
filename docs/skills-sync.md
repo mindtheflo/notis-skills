@@ -187,10 +187,35 @@ runs honor the account's `sync_enabled` preference.
 The preference defaults to `false` when no settings row exists. After the user
 explicitly enables it, repeating Desktop runs refresh account skills. When it
 is off, the repeating invocation exits before pulling, gathering, deleting,
-writing, or relinking skills for the current account. It still removes
-Notis-managed agent links that point into a different account's mirror, so an
-account switch cannot expose the previous account's skills. Neither account's
-mirror is changed. Manual CLI sync remains available.
+writing, or relinking skills for the current account. A linking run still
+removes Notis-managed agent links that point into a different account's mirror,
+so a change of CLI default cannot expose the previous account's skills. Neither
+account's mirror is changed. Manual CLI sync remains available.
+
+#### Agent folders follow the CLI default
+
+Only the CLI default's account (the active profile, `notis profile use`) links
+skills into the agent folders. Every other account runs mirror-only
+(`linkAgentFolders: false`): it pulls, pushes and writes its own mirror under
+`~/.notis/skills/users/<notisUserId>/` but never gathers from, links into or
+unlinks from the agent folders, and skips the deliberate-deletion check and the
+base-skill reconcile. Desktop links only when its open account owns the CLI
+default's profile (or the default has no credential), so a Desktop account
+switch never changes the agent folders. `notis skills sync --profile <name>`
+naming a non-default profile is mirror-only, and so is the LaunchAgent when its
+bound profile is no longer the default. `notis profile use <name>` starts a
+detached `notis skills sync --profile <name>` so the new default's skills are
+linked straight away (production and Beta endpoints only). A linking run clears
+the other accounts' `verifiedAgentLinks` in their `.notis-sync.json`, so their
+next linking run relinks instead of reading the removed links as deliberate
+per-agent deletions.
+
+Desktop signs the CLI in for each saved account, one profile per account, and
+signing an account out of Desktop reverses that on this computer: Desktop
+pushes the account's unsynced edits through a mirror-only run, removes the
+profile it made, revokes the computer's grant unless another local profile uses
+it, unlinks the account's skills and deletes its mirror. If the push fails or
+sync is off, the mirror stays. Profiles made with `notis login` are left alone.
 
 ### Desktop-independent automatic sync on macOS
 
@@ -207,8 +232,10 @@ it. Dev-worktree and hosted credentials cannot enroll it. The worker resolves th
 stored OAuth profile afresh, verifies its account and API against the binding,
 refreshes its own OAuth grant, and checks the server preference before acquiring
 the shared sync lock. A disabled preference causes no account-file cleanup or
-mutation. Logging out of the CLI stops authenticated refresh; signing out of
-Desktop does not revoke the independent CLI grant.
+mutation. Logging out of the CLI stops authenticated refresh. Signing an
+account out of Desktop revokes only a profile Desktop made for it, never one
+made with `notis login`. The worker runs mirror-only while its bound profile is
+not the CLI default.
 
 The installed job uses an absolute Node executable and a content-addressed,
 self-contained package bundle under `~/.notis/skills/service/runtime/`. No token,
@@ -513,7 +540,7 @@ invalid YAML and can make a readable file invisible to an agent's skill parser.
 
 1. Fetch sync settings from `POST /portal_skills/sync-settings`.
 2. Use its server-verified `user_id` as the canonical local scope, falling back to JWT `sub` only for an older server that does not return it.
-3. Remove Notis-managed agent links that point into another account's mirror. For an Electron repeating invocation with `sync_enabled` false, stop here without changing either account mirror or current-account links.
+3. Remove Notis-managed agent links that point into another account's mirror, and clear the other accounts' verified agent links (linking runs only). For an Electron repeating invocation with `sync_enabled` false, stop here without changing either account mirror or current-account links.
 4. Pull Portal skills from `POST /portal_skills/sync-pull` and exclude the three CLI-owned base names.
 5. Detect deliberate per-agent deletions from matching verified-link evidence before any gather; refresh and conditionally save those removals. When the verified id differs from JWT `sub`, gather the former auth-sub mirror into the canonical mirror and reuse matching prior sync state, backing up conflicts.
 6. Gather top-level local skills into the scoped mirror and dedupe conflicts, while treating the base root as externally managed.
@@ -522,7 +549,7 @@ invalid YAML and can make a readable file invisible to an agent's skill parser.
 9. Pull again after a push so local state matches the server.
 10. Delete account skills that were previously synced but no longer exist in the cloud response. Base skills are never deletion candidates.
 11. Download or write account skills whose server hash differs from unchanged local state.
-12. Reconcile account-skill links from `agent_targets` without removing base links.
+12. Reconcile account-skill links from `agent_targets` without removing base links. A mirror-only run skips the deletion check in step 5, the agent-folder gather in step 6 and this step.
 13. Persist account-only `.notis-sync.json` state.
 
 Curated skills can be pulled and linked locally when they are installed for the user, but local changes to curated skill folders are not pushed back to the server. The push planner skips local folders whose names match cloud curated skills and only updates non-curated user skills.

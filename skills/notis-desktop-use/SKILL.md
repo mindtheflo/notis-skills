@@ -28,6 +28,11 @@ touch the Mac.
 `mode: "local_shell"`.**
 
 - If it succeeds, all subsequent shell calls run on the user's Mac. Proceed.
+- If the user has several computers, the result lists them in `computers`.
+  Screen control needs the user's eyes, so pick the Mac they are at
+  (`user_is_at_it_now`) and pass its name as `computer` (to `set_shell_mode`
+  or `LOCAL_NOTIS_RUN_DESKTOP_SHELL`). Commands stay on the computer this
+  conversation used last until you name another.
 - Your Computer is available on every plan, including Free. If this call
   unexpectedly returns `entitlement_upgrade_required`, report the access-policy
   mismatch and stop; do not turn it into Ultra upgrade guidance. If it returns
