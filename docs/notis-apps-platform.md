@@ -598,15 +598,32 @@ site with a Portal or API host) Sites are not available: `GET /portal_spaces/sit
 `available: false` with no links, and turning a Site on, for a Space or a record, is refused with
 `409 sites_not_available` before anything is read or written (`set_space_site` in
 `server/lib/space_membership.py`). Turning an existing Site off keeps working, and every Site still
-on stays visible with a way to turn it off. The share dialog then no longer mentions publishing in
-its description and its Site section shows "Sites aren't available yet" without the switch (with the
-switch, to turn it off, when the Space's or the record's own Site is still on). The dialog's section
-covers only those Sites (`siteFor` in `portal/src/lib/spaceSharing.ts`): a record-param Site
-(`record_key` set) is managed from that record's Share popover. The popover shows "Sites aren't
+on stays visible with a way to turn it off. The share panel (the Space view's top bar Share) then
+shows "Sites aren't available yet" in each Site row without the switch (with the switch, to turn
+it off, while that row's Site is still on). Its first row is the view's own Site, the Space's or its
+page's (`siteFor` in `portal/src/lib/spaceSharing.ts`). A record page the view shows with
+`DocumentPage` `share` on adds a row for its record-param Site (`record_key` set): while it shows, the
+page registers in the view's `RecordShareSlot` (`portal/src/lib/spaceRecordShareSlot.ts`) and drops
+its toolbar Share, so the view keeps one Share. The row reads that Site with `recordSiteFor` and
+turns it on or off through `site()` in `portal/src/lib/spaceRecordClient.ts`; the view's own page has
+one Site, so its row replaces the view's, and the top bar globe shows while any listed Site is on.
+When more than one Site matches a page (`recordSites`: its record-param Sites under the param that
+opens it, plus an older Site of its own view), its row disables the switch and shows the
+`siteRecordAmbiguous` note, and `site()` refuses with the client-only `409 site_record_ambiguous` (the
+server's `site_record_param_required` covers other refusals and keeps the generic Site error); when
+one of them is an older Site of the view, the view's own row stays so it can still be turned off. A
+Space that opens straight onto the view (`landingParents` in `portal/src/lib/spaceLanding.ts`: its chosen page, else its default child,
+as `readSpaceLanding` follows them) never shows its own view, so for each one the person edits the
+panel starts with a "Share all of {space}" row that turns it to that Space's sharing, with a way back.
+The panel's adoption and caught-error measurement contract lives in
+`portal/src/lib/spaceShareAnalytics.ts`; those terminal UI attempts are distinct from the committed,
+receipt-deduplicated outcomes in `server/lib/space_analytics.py`. New panel series begin at their
+verified production cutover; earlier use is unknown, not reconstructed from backend changes.
+Any other record-param Site (a `ShareControl`, or a page shown in another Space's view) is managed
+from that record's Share popover. The popover shows "Sites aren't
 available yet" without "Create public link" when no Site is on for the record; a record Site still
-on shows as shared, without a link to copy, with "Stop sharing" (`site()` in
-`portal/src/lib/spaceRecordClient.ts` reports it with a null `url`, as it does a lost link while
-Sites are available). "This site's link is unavailable" appears only when a Site is on, Sites are
+on shows as shared, without a link to copy, with "Stop sharing" (`site()` reports it with a null
+`url`, as it does a lost link while Sites are available). "This site's link is unavailable" appears only when a Site is on, Sites are
 available and its link could not be derived (a signing-key rotation). A Site host build without a usable Site origin says the site can't open here instead of
 asking to reopen the link. Production has no Site origin until the Sites domain is
 chosen, and the Main import copies no Site rows, so no Site exists there until then. Production uses
@@ -3494,6 +3511,8 @@ Slots: `breadcrumb` (crumbs before the title, or `false`), `actions` (toolbar bu
 `aboveBody`, `belowBody`. Toggles: `share` (off by default; turn it on only where Beta shared the record),
 `header` (`false`, or `{ cover, icon, title }`), `meta`, `properties` (`'panel'`, `'hidden'` or
 `{ include, exclude, order }` by property name), `width` (`standard` 900px, `wide`, `full`), `readOnly`.
+With `share` on, a page in its own Space's view is listed in the view's top bar Share panel and its toolbar
+has no Share (see Site origin); shown in another Space's view, it keeps Share in its toolbar.
 Callbacks: `onDirtyChange`, `onSavingChange`, `onSaved({ recordKey, title })` after each confirmed save. `layout`
 receives the host-bound parts `{ Toolbar, Header, Meta, Properties, Body }` to rearrange them while one editor
 session and one save queue stay in place; with a layout, Meta shows only its strip (the properties render once,
