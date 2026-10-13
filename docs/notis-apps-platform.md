@@ -807,6 +807,27 @@ nothing is changed. A folder cannot rename a Skill (use `notis skills update`),
 a list entry cannot rename an alias, and a resource the definition declares
 cannot be unlisted by the same release.
 
+Deleting a Skill through the legacy path (`skills.status = 'deleted'`) removes
+its Space links in the same transaction (trigger
+`skills_remove_deleted_space_links`; while the Spaces structure lock is busy it
+skips with a warning rather than failing the delete). Restoring the Skill does
+not restore its links. A link left by an earlier delete has no native Skill
+identity, so every release that touched it failed; remove it by binding like any
+other link: `notis spaces links list <space-id>` names the binding and its
+revision, then `notis spaces links remove <space-id> <binding-id> --revision <n>
+--request-id <stable-key>` (`portal_spaces/space-link-remove`) applies the
+resource's own link change. For a missing or deleted Skill only a removal is
+accepted, by an Editor of that Space; adding a link to it is refused.
+
+Keep the Space reachability helpers (`notis_space_parent_contexts`,
+`notis_space_ancestors`, `notis_space_access_path_visible`,
+`notis_current_space_editors`, `notis_space_tree_roots`,
+`notis_space_record_parent`) in PL/pgSQL. As SQL functions with `SET
+search_path` they are never inlined and are planned again at every nested call,
+so one source release checking five links ran past the 8 s statement timeout
+(57014). PL/pgSQL keeps their plans for the session: the same five links take
+about 0.6 s instead of 2 s on a seeded branch.
+
 An added existing database may be consumed by the same source under its new
 alias. Verification checks the publishing Editor's R3 authority on that database
 before reading its current native schema, then pins a prospective binding identity
@@ -1409,6 +1430,21 @@ legacy gate. Workspace-database discovery and legacy Views queries separately
 exclude native-v2, non-direct and trashed definitions, including those visible
 to an unmigrated App. Legacy navigation aliases resolve current Space access;
 they do not authorize old source or account-scoped actions.
+
+An old App page link whose Space no longer opens for this person (binned, or
+never shared) opens the App's root Space instead, marked `fallback: 'app_root'`,
+with the same access check and without the old selection; a load failure (503)
+is never answered this way. To repair the page link itself, the old App's owner,
+or an Editor of the Space it opens now (binned included), points it at a live
+Space they edit: `notis spaces aliases list --legacy-id <app-id>` shows each
+route, its Space and whether that Space is binned, then `notis spaces aliases
+repoint --legacy-id <app-id> --route <slug> --space <space-id> --expected-space
+<current-space-id> --request-id <stable-key>` (`--dry-run` first; optional
+`--selection-param <name>`) calls `repoint_notis_space_legacy_alias` through
+`portal_spaces/legacy-alias`. Each request is receipted in
+`space_legacy_alias_receipts` and replays; `--expected-space` refuses a link
+that moved since it was listed. `extra:` page aliases are not repointed, and the
+new Space still checks access for everyone who opens the link.
 
 The converted root's **App details** menu and bare `/apps/<installed-app-id>`
 link retain the original install's version, screenshots, description and release
