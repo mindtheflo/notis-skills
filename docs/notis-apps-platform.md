@@ -908,87 +908,82 @@ native QUERY action and its input schema; it never contacts the API or provides
 body Save during offline verification. Exercise saving separately on the isolated
 stack, including first-save bootstrap, exact receipt retry and grant revocation.
 
-#### Native provider reads: explicit issuer grants
+#### Provider actions: one sealed issuer grant
 
-Native PostForMe support is limited to `LOCAL_POSTFORME_GET_POSTS` and
-`LOCAL_POSTFORME_GET_POST`, through the ordinary declared-action/grant APIs.
-Authorization resolves exactly one current account from the authorizing Editor's
-fixed `platform` and `account_label`, then pins its connection ID and identity.
-The caller still needs current Space/action authority; provider access and billing
-belong to that saved issuer, never an undeclared owner or a same-label replacement.
+A declared action can target any final tool available to its issuer through the
+CLI: native tools, Composio integrations, remote `CUSTOM_*` MCP tools and desktop
+MCP. Generic bridge, shell, run and agent-control tools are excluded. Spaces keep
+`callTool`, raw `request` and `listTools` disabled; source uses `useAction` or
+`useActionQuery` and sends only the action ID, typed inputs and source revision.
 
-- Posts lists declare exactly those selectors, a fixed integer `limit` from 1 to
-  50, fixed nonempty unique `status` values (`draft`, `scheduled`, `processing`,
-  `processed`), and `offset`. Only offset may be a required integer input with
-  explicit minimum/maximum inside 0–10000; a fixed offset also works.
-- One-post reads declare exactly the two selectors and `id`. Only ID may be a
-  required string input: `minLength` at least 1, `maxLength` at most 200 and
-  `pattern: '^[A-Za-z0-9_-]+$'`; a fixed matching ID also works. The exact returned
-  post and its structural account association are checked before data is exposed.
-- Input envelopes remain closed. No arbitrary native tools, caller-selected
-  accounts, feed/results/write operations or account metadata synchronization run
-  through this adapter. Connection identity/permission changes or disconnection
-  revoke the saved grant; reconnecting does not revive it. Receipts keep existing
-  replay, settlement and issuer billing behavior.
-- Record Sites cannot invoke these provider reads. Agent renders use declared
-  read-only actions; background renders still refuse paid or unknown-cost reads.
+The template fixes the tool, account selectors and non-input arguments. A literal
+`arguments.account` selects a Composio account exactly as the CLI does; without
+one, the issuer must have exactly one active account for that toolkit. Registered
+Custom MCP servers with `NO_AUTH` instead pin the owned server row and explicitly
+select no account; declarations cannot add an account selector to that binding.
+Browser inputs cannot select a different tool, account or fixed target. Publishing pins
+the grant and template digest; changing either requires new authorization.
 
-Better Stack monitoring supports only `BETTER_STACK_LIST_MONITORS` with fixed
-`{page:1,per_page:50}` and `BETTER_STACK_LIST_HEARTBEATS` with fixed `{page:1}`,
-with no runtime inputs. The adapter selects exactly one active private issuer-owned
-Composio account and pins its connection identity/revision and tool version. It
-never creates a session or account label, selects a caller account, or retrieves an
-API token. Connection/credential changes fail closed before dispatch and result
-projection, including replay. Heartbeat ping URLs and authentication fields are
-not exposed; the read result contains only the monitoring fields used by the view.
-Ordinary receipt settlement and saved-issuer billing still apply. Record Sites
-cannot invoke these reads. Other Better Stack operations need separate adapters.
+The sealed pipe (`server/lib/space_tool_pipe.py`) pins the tool family, schema,
+version, connection identity and read-only decision. Each call rechecks current
+Space authority, issuer permissions and the issuer's active connection, rebuilds
+the arguments and dispatches as the issuer. The viewer remains the receipt actor;
+provider access, credit caps and usage billing belong to the issuer. Composio and
+Custom MCP use grant-scoped sessions restricted to the saved toolkit/account.
+Nested generic dispatch remains unavailable inside a Space action.
 
-GitHub GraphQL supports only `GITHUB_RUN_GRAPH_QL_QUERY` with a fixed query
-document and typed variables (`server/lib/space_github_reads.py`). Arguments are
-exactly `{query, variables}`: `query` is fixed text, never an input, and each
-GraphQL variable is either a fixed scalar or one required input. The admitted
-subset is one `query` operation (a shorthand `{...}` is normalized to it) whose
-root fields are `repository`; non-null `String!`, `ID!`, `Int!` or `Boolean!`
-variables without defaults; field selections with aliases and distinct response
-names; and arguments that are declared variables or integer literals.
-Mutations, subscriptions, several operations, fragments (named or inline),
-directives, string/block-string/float/enum/boolean/null/list literals,
-list types, introspection fields and reserved root response names
-(`data`, `errors`, `extensions`, `results`, `partial`, `successful`, `error`)
-are refused, as are documents over 16384 characters, 10 levels or 512 fields.
-Expanding the subset requires an explicit behavior test.
+Generated database writers resolve against the issuer's current database catalog
+and pin the resolved database ID as well as the schema, including legacy slug-only
+names. Ordinary native query/insert/update/delete transactions keep their existing
+authorization path.
 
-Run `compile_github_graphql_template` (or `canonical_document`) before source
-packaging: it drops comments and insignificant whitespace/commas, and validation
-refuses any other spelling, so the stored canonical text participates in source,
-template, grant and invocation digests. A saved grant never admits a changed
-document; execution sends exactly the stored text with the rendered variables.
-String inputs declare `minLength`/`maxLength` (at most 256), integer inputs
-`minimum`/`maximum` inside GraphQL Int, or an `enum`/`const`; the adapter
-re-checks rendered values against those schemas before dispatch.
+Declared writes are available to viewers who can invoke the action. Read-only
+renderers and isolated stacks admit only sealed reads; Record Sites keep their
+separate native-record action scope. Background renders still refuse paid or
+unknown-cost reads. Receipt replay and settlement retain the same exact-request
+and current-authority checks without repeating the accepted tool effect.
+An accepted paid write retains its result and usage for settlement even if access
+is revoked during the provider response; the final projection still withholds it.
 
-Authorization selects exactly one active private issuer-owned Composio GitHub
-OAuth2 account (no viewer, label, API-key or first-match fallback; none or
-several refuse with `connection_unavailable`), checks that the pinned tool
-version takes a string `query` and object `variables`, and pins the account
-identity, tool version and SHA-256 of the canonical document. Token refresh
-under the same account is credential maintenance; a new account, owner, auth
-configuration, granted scope, disable or revocation fails closed before dispatch
-and before receipt projection, including replay. The grant is read-only; the
-result contains only the selected response fields (unselected provider fields
-are dropped, `partial: true` marks GraphQL errors next to data, and a response
-without data is unsuccessful). Receipts, replay, settlement and saved-issuer
-billing are unchanged. Record Sites cannot invoke this read, and background
-renders refuse it like other provider reads.
+Desktop schema discovery on an isolated stack is limited to the exact owned
+connection being authorized. Its READ call additionally requires the durable
+receipt and grant. The authenticated API-to-broker request carries that authority
+bound to one computer and exact request; generic Desktop discovery, calls and
+shell commands remain fenced. Use a harmless run-owned stdio fixture for local
+acceptance, never an unrelated Desktop server copied into the test database.
 
-`LOCAL_NOTIS_LIST_REMINDERS` is the only native reminder action supported in a
-Space. It takes no runtime inputs and fixes an integer `page_size` from 1 to 100
-in the approved template. The result belongs to the saved issuer, never the
-current viewer, and uses the canonical reminder-list pagination semantics. No
-cursor selector, reminder write, schedule, or other native tool is enabled.
-Current issuer/viewer authority is rechecked before dispatch and receipt replay;
-record Sites cannot invoke it.
+Tool-specific read rules preserve the following narrower contracts; they do not
+limit the pipe's general final-tool support:
+
+- **PostForMe:** `LOCAL_POSTFORME_GET_POSTS` and `LOCAL_POSTFORME_GET_POST` fix
+  `platform` and `account_label` and pin one current issuer account. Lists fix a
+  limit from 1–50 and unique statuses (`draft`, `scheduled`, `processing`,
+  `processed`); only an integer offset in 0–10000 varies. One-post reads allow
+  only a required bounded ID matching `^[A-Za-z0-9_-]+$`. Results are checked
+  against the pinned account before projection.
+- **Better Stack:** legacy `BETTER_STACK_LIST_MONITORS` (`{page:1,per_page:50}`)
+  and `BETTER_STACK_LIST_HEARTBEATS` (`{page:1}`) grants preserve their fixed page,
+  connection identity/version and monitoring-field projection, excluding
+  heartbeat ping URLs and authentication fields. Other declared tools use the
+  generic schema/effect rules.
+- **GitHub GraphQL:** the read rule admits one canonical `query` operation with
+  `repository` root fields, typed variables and the bounded subset enforced by
+  `server/lib/space_github_reads.py`. Compile with
+  `compile_github_graphql_template` before packaging; comments/whitespace are
+  normalized and the exact document participates in all digests. Mutations,
+  fragments, directives, introspection and unsupported literal/type forms do
+  not qualify as reads. Results expose only selected fields; provider errors
+  alongside data are marked `partial`.
+- **Reminders:** existing `LOCAL_NOTIS_LIST_REMINDERS` grants keep their fixed
+  `page_size` and no runtime inputs. The native call reads the issuer's reminders,
+  with the canonical pagination semantics.
+
+Legacy templates, digests and grant IDs stay fixed. The pipe maps saved provider values to
+families and retains the pinned account/tool version; remote MCP grants resolve
+through their saved Custom MCP binding. A changed or revoked identity never
+falls back to the viewer or a replacement connection. Remote transport migration
+and credential cleanup, including the deployment gate for previously working typed
+reads, are documented in [Composio Custom MCP](composio-custom-mcp.md#rollout).
 
 #### Viewer reads: explorer Spaces see what the viewer can open
 
@@ -3613,22 +3608,15 @@ semantics use `RenderChartData`, and a declared `SpaceMarkdown` export can repla
 
 #### Reads made read only by a pinned argument
 
-An MCP action is read only when the server classifies its tool as a read (upstream
-annotations, native overrides; tool-name heuristics only restrict). One narrow,
-explicit exception covers a read whose only mutating behavior is one argument: when
-the published template pins that argument to the value that keeps it a read, the grant
-is labelled read only, so read-only renderers (including the offline render gate) may
-call it. Each case is listed per tool in `_PINNED_READS`
-(`server/lib/space_provider_actions.py`) with its exact upstream tool name, the
-provider's own MCP host, the pinned argument and value, the inputs that may vary and
-the arguments that must stay fixed. The public slug only repeats the server name the
-person chose, so the connection must also be a remote HTTPS server on that host (no
-other port, no credentials in the URL). Today: `LOCAL_MCP_LEMLIST_GET_INBOX_CONVERSATION`
-on `app.lemlist.com` with `markAsRead` fixed to `false`, `limit` fixed, and only
-`contactId` and `page` as inputs. A pin left variable or missing, any other argument,
-another upstream tool or another server keeps the write default. The
-label is decided when the grant is issued, so an existing grant changes only once an
-Editor authorizes the action again.
+The pipe classifies the pinned tool schema and effect metadata. A narrow rule may
+also prove a read when the template fixes the only mutating argument to its
+non-mutating value. `_PINNED_READS` (`server/lib/space_provider_actions.py`) owns
+these exact tool, official provider host, fixed argument and allowed-input rules.
+For Lemlist inbox conversations, `markAsRead` must be `false`, `limit` stays
+fixed, and only `contactId` and `page` may vary. Missing or variable pins, extra
+arguments and lookalike hosts keep the write default. Legacy remote tool names
+resolve to their final Custom MCP tools; the verified server binding still owns
+the host proof. A changed read decision requires a new exact issuer grant.
 
 #### Declared PostgreSQL reads
 
@@ -3664,11 +3652,13 @@ The current version admits reviewed native index expressions and predicates, plu
 contract verified through catalog identity and callbacks—not arbitrary extensions or user-defined functions.
 Pure template-validation caching never replaces current grant, connection or provider-catalog checks.
 
-The adapter pins the issuer, original connection identity and exact template, narrowing only the effective
-official Supabase transport to `read_only=true` and database features. It does not edit the saved connection
-configuration or authorize another project. Receipt replay rechecks current origin and connection authority
-without repeating the provider query. PostgreSQL, its provider and privileged schema administrators remain
-the trust boundary; this is not a sandbox against a malicious database administrator.
+The pipe pins the issuer, exact template and Composio connection. A read-only
+Supabase address must be registered as its own Custom MCP toolkit with
+`read_only=true` and database features; dispatch cannot rewrite the address of a
+Composio-bound connection. Authorize that exact binding before enabling reads.
+Receipt replay rechecks current origin and connection authority without repeating
+the query. PostgreSQL, its provider and privileged schema administrators remain
+the trust boundary, not a sandbox against a malicious administrator.
 
 #### Project-pinned PostHog reads
 
@@ -3678,25 +3668,19 @@ argument object: `{project_id, query, context, llm_model}` and no runtime inputs
 `command`, `connectionId`, `sendRawQuery` or a runtime project/query selector.
 The ordinary EXEC surface and its upstream annotation remain write-scoped.
 
-The adapter derives a private official MCP URL with the documented `project_id`
-query parameter; it never edits the user's saved connection. PostHog pins that
-request context and removes project/organization switching. This is not a
-pre/post check over a mutable active project. Before authorization or execution,
-metadata calls through the **pinned** transport verify the actual project ID and
-the current read-only `execute-sql` and `project-get` child schemas. Their hashes,
-the exact issuer connection identity, original/effective URL hashes, project ID
-and logical template digest are saved in the grant. Project settings and API
-tokens returned by metadata are discarded.
+The Composio toolkit must be registered at the exact official MCP address with
+the fixed `project_id`; dispatch never derives a different server address. The
+read rule validates that binding and the current read-only `execute-sql` and
+`project-get` contracts before admitting the fixed query. Project settings and
+API tokens returned by metadata are discarded.
 
-Only the adapter derives the physical `call --json execute-sql {"query":...}`
-payload. It first checks the logical typed arguments against the durable Space
-invocation, then binds that same receipt/actor/issuer/connection to the exact
-derived wire payload. Generic dispatch and held-execution checks still compare
-the physical payload; unrelated EXEC commands cannot use this read admission.
-MCP session keys already include the effective URL, so a project-pinned request
-cannot reuse an unscoped session. OAuth maintenance compares the original saved
-configuration, not the private URL. Receipt replay checks current saved identity
-without making another metadata or analytics request.
+Only the server derives `call --json execute-sql {"query":...}`. It checks the
+logical arguments against the durable invocation before binding the same
+receipt/actor/issuer/connection to the physical payload. Generic dispatch still
+compares that exact payload; unrelated EXEC commands do not gain read admission.
+Receipt replay checks current binding identity without repeating the query.
+An unpinned address needs a separate project-pinned toolkit and authorization;
+reconnecting an unpinned address alone does not establish read authority.
 
 CLI and the warm renderer use `packages/view-renderer`; its credential-free host must be built before packaging.
 The renderer runs in a separate child of the existing collaboration service behind `/views/render`; it uses an
