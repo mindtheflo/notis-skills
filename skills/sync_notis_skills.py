@@ -34,6 +34,7 @@ for _import_root in (_REPO_ROOT, _SERVER_ROOT):
 from server.lib.curated_skill_channels import (
     CURATED_SKILL_CHANNELS,
     build_curated_skill_channel_update_fields,
+    get_curated_skill_channel_field,
 )
 from server.lib.curated_skill_metadata import (
     feature_flag_from_skill_md,
@@ -267,11 +268,15 @@ def get_skills_dir(cli_skills_dir: str | None) -> str:
     return os.path.join(_SERVER_ROOT, "skills")
 
 
-def fetch_curated_skills(supabase, skill_names: list[str] | None) -> list[dict]:
-    """Return curated_skills rows with name, openai_skill_id, id. Only rows that have openai_skill_id."""
+def fetch_curated_skills(supabase, skill_names: list[str] | None, channel: str | None = None) -> list[dict]:
+    """Return curated_skills rows with name, openai_skill_id, id (and the channel's
+    recorded source SHA when a channel is given). Only rows that have openai_skill_id."""
+    fields = "id, name, openai_skill_id"
+    if channel:
+        fields += ", " + get_curated_skill_channel_field("openai_skill_source_sha", channel)
     result = (
         supabase.table("curated_skills")
-        .select("id, name, openai_skill_id")
+        .select(fields)
         .not_.is_("openai_skill_id", "null")
         .execute()
     )
@@ -413,6 +418,35 @@ async def push_skill(
     return True, version
 
 
+_COMMIT_SHA = re.compile(r"^[0-9a-f]{40}$")
+
+
+def skill_dir_unchanged_since(skill_path: str, recorded_sha: str | None, source_sha: str | None) -> bool:
+    """True only when git proves the skill directory is identical at both commits.
+
+    A missing, malformed or unreachable recorded commit means "changed", so the
+    skill publishes as before.
+    """
+    if not (recorded_sha and source_sha and _COMMIT_SHA.match(recorded_sha) and _COMMIT_SHA.match(source_sha)):
+        return False
+    skill_path = os.path.realpath(skill_path)
+    try:
+        top = subprocess.run(
+            ["git", "-C", skill_path, "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        diff = subprocess.run(
+            ["git", "-C", top, "diff", "--quiet", recorded_sha, source_sha, "--", os.path.relpath(skill_path, top)],
+            capture_output=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return False
+    # 0 = identical; 1 = changed; anything else (an unknown commit) is not proof.
+    return diff.returncode == 0
+
+
 def clone_repo_to_temp(repo_url: str, prefix: str = "skills_") -> str:
     """Shallow clone a git repo. Returns path to repo root."""
     tmp = tempfile.mkdtemp(prefix=prefix)
@@ -448,8 +482,14 @@ async def run_sync(
     bootstrap: bool,
     channel: str,
     source_sha: str | None,
+    skip_unchanged: bool = False,
 ) -> int:
-    """Run sync. Returns exit code."""
+    """Run sync. Returns exit code.
+
+    With skip_unchanged, a repo-maintained skill whose directory is identical at
+    the source SHA last recorded for this channel is reported as skipped instead of
+    publishing a new version (a new version changes every Space draft holding it).
+    """
     openai_api_key = os.getenv("OPENAI_API_KEY")
     if not openai_api_key:
         print("Error: OPENAI_API_KEY is required", file=sys.stderr)
@@ -500,7 +540,7 @@ async def run_sync(
         id_map = {canonical_repo_skill_name(n): sid for n, sid in id_map.items()}
         curated = [{"name": n, "openai_skill_id": sid, "id": None} for n, sid in id_map.items() if n in skills_to_sync]
     else:
-        curated = fetch_curated_skills(supabase, skill_names or None)
+        curated = fetch_curated_skills(supabase, skill_names or None, channel)
         if not curated:
             print("No skills to sync (no curated_skills with openai_skill_id). Use --bootstrap to create them.", file=sys.stderr)
             return 0
@@ -553,6 +593,14 @@ async def run_sync(
                 )
             except ValueError as metadata_error:
                 results.append({"name": name, "ok": False, "error": str(metadata_error)})
+                continue
+
+            # Validated first, so an unchanged skill still fails on metadata the
+            # current catalog no longer accepts.
+            recorded_sha = row.get(get_curated_skill_channel_field("openai_skill_source_sha", channel))
+            if (skip_unchanged and name in OUR_SKILLS and openai_skill_id
+                    and skill_dir_unchanged_since(skill_path, recorded_sha, source_sha)):
+                results.append({"name": name, "ok": True, "version": None, "skipped": "unchanged", "recorded_source_sha": recorded_sha})
                 continue
 
             if openai_skill_id:
@@ -638,7 +686,9 @@ async def run_sync(
         print(json.dumps({"results": results, "failed": len(failed)}))
     else:
         for r in results:
-            if r.get("ok"):
+            if r.get("skipped"):
+                print(f"  {r['name']}: skipped, unchanged since {r['recorded_source_sha']}")
+            elif r.get("ok"):
                 v = r.get("version", " (dry-run)" if dry_run else "")
                 print(f"  {r['name']}: ok" + (f" version={v}" if v else ""))
             else:
@@ -680,6 +730,11 @@ def main() -> int:
         help="Git SHA or other source identifier to store alongside the channel sync metadata.",
     )
     sync_parser.add_argument(
+        "--skip-unchanged",
+        action="store_true",
+        help="Skip a skill whose directory is unchanged since the source SHA recorded for this channel.",
+    )
+    sync_parser.add_argument(
         "--skill-ids",
         metavar="name:id,...",
         help="Fallback: map skill name to openai_skill_id when Supabase unavailable",
@@ -703,6 +758,7 @@ def main() -> int:
             skill_ids_flag=args.skill_ids,
             json_output=args.json,
             bootstrap=args.bootstrap,
+            skip_unchanged=args.skip_unchanged,
         )
     )
 

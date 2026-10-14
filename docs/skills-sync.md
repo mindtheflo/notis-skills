@@ -31,7 +31,7 @@ Do not mix these paths:
 - CLI local-agent sync is the end-user workflow for installed skills on one authenticated local account.
 
 Public distribution is a third, read-only output rather than another runtime
-sync path. `.github/workflows/sync-public-repositories.yml` mirrors every
+sync path. `.depot/workflows/sync-public-repositories.yml` mirrors every
 tracked `server/skills/<name>/` folder to
 [`mindtheflo/notis-skills`](https://github.com/mindtheflo/notis-skills) after a
 push to `beta`. The monorepo stays canonical; the public repository is replaced
@@ -143,11 +143,11 @@ When bootstrapping a missing curated skill, the script:
 
 For upstream `skill-creator`, the sync script renames it to `notis-skill-creator` and adapts the upstream packaging instructions to the Notis create-skill flow.
 
-### Automated Sync (GitHub Actions)
+### Automated Sync (Depot CI)
 
-`.github/workflows/sync-curated-skills.yml` runs the publishing CLI in CI. It **never passes `--bootstrap`**, so it only versions skills that already exist in `curated_skills` (a brand-new skill must be bootstrapped manually once first).
+`.depot/workflows/sync-curated-skills.yml` runs the publishing CLI in CI. It **never passes `--bootstrap`**, so it only versions skills that already exist in `curated_skills` (a brand-new skill must be bootstrapped manually once first).
 
-Repo skills are discovered dynamically in the workflow too — it scans `server/skills/*/SKILL.md` (mirroring the CLI), so a new skill folder is picked up with no workflow edit.
+Repo skills are discovered from each channel's exact source tree. Every relevant push reconciles that tree's full skill inventory, so queued pushes cannot lose an earlier skill change. A newer branch head is accepted only when its skill inputs are unchanged; otherwise the newer queued run owns publication. Manual inputs still select a bounded subset. See [Depot rollout](depot-ci-rollout.md) for activation and read-only rehearsals.
 
 The sync job installs the full `server/requirements.txt`: frontmatter validation imports the server entitlement catalog, which pulls in the billing stack. Its sync step runs under an explicit `bash` shell (pipefail), so a crash before `tee` fails the run. From August to October 2026 the job installed only three packages, the script crashed on that import, and the default shell hid the crash, so runs passed while syncing nothing; after a long gap, compare `curated_skills.openai_skill_version_<channel>` with the run history instead of trusting a green run.
 

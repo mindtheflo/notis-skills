@@ -2201,7 +2201,7 @@ source metadata.
 
 The package is mirrored automatically to the public
 [`mindtheflo/notis-sdk`](https://github.com/mindtheflo/notis-sdk) repository by
-`.github/workflows/sync-public-repositories.yml` after relevant changes reach
+`.depot/workflows/sync-public-repositories.yml` after relevant changes reach
 `beta`. The monorepo remains the source of truth; public mirror files are
 generated and must not be maintained separately. The same workflow mirrors the
 CLI to `mindtheflo/notis-cli`. The independent `mindtheflo/notis-apps` registry
