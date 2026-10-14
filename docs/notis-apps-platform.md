@@ -929,7 +929,8 @@ version, connection identity and read-only decision. Each call rechecks current
 Space authority, issuer permissions and the issuer's active connection, rebuilds
 the arguments and dispatches as the issuer. The viewer remains the receipt actor;
 provider access, credit caps and usage billing belong to the issuer. Composio and
-Custom MCP use grant-scoped sessions restricted to the saved toolkit/account.
+Custom MCP use grant-scoped sessions restricted to the grant's toolkit and account
+(for a saved MCP server, the account it signs in with now).
 Nested generic dispatch remains unavailable inside a Space action.
 
 Generated database writers resolve against the issuer's current database catalog
@@ -979,11 +980,45 @@ limit the pipe's general final-tool support:
   with the canonical pagination semantics.
 
 Legacy templates, digests and grant IDs stay fixed. The pipe maps saved provider values to
-families and retains the pinned account/tool version; remote MCP grants resolve
-through their saved Custom MCP binding. A changed or revoked identity never
-falls back to the viewer or a replacement connection. Remote transport migration
-and credential cleanup, including the deployment gate for previously working typed
-reads, are documented in [Composio Custom MCP](composio-custom-mcp.md#rollout).
+families and retains the pinned tool version and, except for saved MCP servers, the
+pinned account; remote MCP grants resolve through their saved Custom MCP binding.
+A changed or revoked identity never falls back to the viewer or a replacement
+connection. Remote transport migration and credential cleanup, including the
+deployment gate for previously working typed reads, are documented in
+[Composio Custom MCP](composio-custom-mcp.md#rollout).
+
+**Connection changes.** A saved MCP server's grant is authorized by which server the
+issuer saved, not by the row or the Composio account it signs in with. Its identity
+(`notis_space_mcp_record_identity`) covers the owner, address, transport, execution
+location, Runs on computer, auth type, static header names and the stdio command,
+arguments and variable names. It ignores the row ID and name, header and variable
+values, the tool restriction, Test results, sign-in state and tokens, OAuth client
+settings, label, description, the Composio binding columns and any later column, so
+a Test, a Reconnect, a key rotation, a rename and the nightly refresh keep the grant,
+and each call runs with the server's current account and toolkit (a desktop
+server's grant keeps its pinned row and upstream tool, so its action name does not
+change with the server's name). A pin issued with
+a sign-in never runs accountless and a `NO_AUTH` pin never gains one; a lost sign-in
+refuses calls until the issuer reconnects. Deleting the server leaves its grants
+dormant: calls are refused until the issuer saves the same server again, then
+`notis_space_mcp_pinned_connection` resolves the pin to the one row saved after the
+newest grant pinned to the deleted row (`read_notis_space_grant_pin_issued_at`). A
+copy that already existed is never followed, two new copies refuse until one goes,
+and a pinned row that still exists is never replaced by a match. The followed row
+must sign in with its own Composio account; it never borrows another one. Changing which server a row is disables legacy `mcp` grants pinned or
+re-anchored to it for good (`notis_space_mcp_connection_changed`); sealed pipe
+grants are refused while their pinned server identity differs. A Composio toolkit
+grant (no saved server) keeps its pinned account; while that account still exists
+but has lapsed (expired or revoked), calls are refused. Once it is deleted (a
+disconnect or a reconnect), the grant follows only an active account the issuer
+connected after the newest grant pinned to the deleted account: the only such account, or the one the
+template's account selector names (a selector naming the deleted account's ID
+refuses); two candidates refuse, and an account that existed before the grant is
+never followed. A PostForMe grant pins one account: a status other than
+active refuses calls until that account is active again, while a different account,
+a cleared account, a renamed label, changed permissions or a deleted row disables the grant
+(`notis_space_postforme_connection_changed`). A disabled grant never comes back;
+the Space needs a new authorization.
 
 #### Viewer reads: explorer Spaces see what the viewer can open
 
