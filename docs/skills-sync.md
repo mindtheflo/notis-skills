@@ -182,7 +182,9 @@ The CLI owns local-agent sync. `notis skills sync` works without Desktop and a
 manual run always reconciles account skills. Electron runs the same CLI-owned
 engine with repeat semantics at startup, after authentication, after
 resume/unlock, and every five minutes while it is running. Only those repeating
-runs honor the account's `sync_enabled` preference.
+runs honor the account's `sync_enabled` preference. On the cloud computer Notis
+publishes the account's skills itself, so `notis skills sync` skips account sync
+there and only removes agent links left dangling by a replaced skill folder.
 
 The preference defaults to `false` when no settings row exists. After the user
 explicitly enables it, repeating Desktop runs refresh account skills. When it
