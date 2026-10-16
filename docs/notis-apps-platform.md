@@ -845,6 +845,15 @@ so one source release checking five links ran past the 8 s statement timeout
 (57014). PL/pgSQL keeps their plans for the session: the same five links take
 about 0.6 s instead of 2 s on a seeded branch.
 
+`notis_space_assets_seeded(uuid[])` repeats the seed rule of
+`notis_resource_link_reachability` (the resource's owner is a current Editor of
+the link's Space, directly or through the owner's Team, or a Space-owned
+resource's link shares a tree root with its origin), so
+`notis_space_asset_reachable` and `read_notis_view_catalogue_v2` run the full
+graph only for the links it does not return. Change both rules together: every
+link it returns must be reachable in the graph. It runs once per check rather
+than once per Space, so it stays SQL (a PL/pgSQL copy saved about 0.2 ms a call).
+
 An added existing database may be consumed by the same source under its new
 alias. Verification checks the publishing Editor's R3 authority on that database
 before reading its current native schema, then pins a prospective binding identity
