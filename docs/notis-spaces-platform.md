@@ -1,271 +1,181 @@
-# Notis Development Workflow And Apps Platform
+# Notis Spaces Platform
 
-This is the canonical reference for local Notis development and the Notis Apps platform: repo setup, environment files, dev-stack discovery, branch/release policy, what a Notis App is, how the platform works, every way a user can create and edit apps, and the architectural rules that matter when building, debugging, or documenting apps.
+This is the canonical reference for the Notis Spaces platform: what a Space is, how
+Spaces are shared, published as Sites and installed from the Store, how their views,
+source, Skills, actions and data work, and the architectural rules that matter when
+building, debugging or documenting them. It also keeps the repository development notes
+Space work relies on; [Development workflow](development-workflow.md) owns repository
+setup, environment files and the dev stack.
 
 Use this together with [server/skills/notis-apps/SKILL.md](../server/skills/notis-apps/SKILL.md):
-- this document explains the platform model, contracts, and all creation/editing paths
-- the skill explains the execution workflow for using the CLI
+- this document explains the platform model and contracts
+- the skill explains the execution workflow with the CLI
+
+Spaces replaced Notis Apps. A Space converted from an App keeps the App's id, and an old
+App link (`/apps/<id>[/<page>]`) opens that Space
+([SPC-001](../.agents/skills/tools/notis-specs/specs/spc.md)). There is no App runtime,
+App Store, `notis apps` command group or `notis:apps` permission any more; a sign-in that
+still asks for `notis:apps` gets it dropped
+([SPC-002](../.agents/skills/tools/notis-specs/specs/spc.md)).
 
 ### Tool boundaries
 
-Two surfaces, two responsibilities. Each one keeps its lane — see [Publishing to the Public App Store](#publishing-to-the-public-app-store) and [CLI Command Reference](#cli-command-reference) for the full contract.
-
 | Action | CLI | Portal |
 |---|---|---|
-| Scaffold a new app, pull source from another app, build, verify, deploy | ✅ | ❌ |
-| Edit listing metadata + media (screenshots, tagline, category) | ✅ (edit `notis.config.ts` + `metadata/`) | ❌ |
-| Update app source in Workspace after checks | ✅ | ✅ (agent-assisted Update app) |
-| Publish or Update a store listing (Team or Public) | ✅ after explicit confirmation (`apps publish --confirm-ready`) | ✅ (App Details → Publish/Update) |
-| Unpublish a listing | ❌ | ✅ |
+| Pull a Space's source, build, verify and publish a new revision | Yes (`notis spaces pull`, `build`, `verify`, `deploy`) | No |
+| Seal a preview, then publish or close it | Yes (`notis spaces preview`, `promote`, `abandon`) | No |
+| Publish a Space to the Store, install, update or unpublish a listing | Yes (`notis spaces store ...`) | Publish to Store from a Space's sidebar menu; install from the Store page |
+| Share a Space, manage its Editors, publish it as a Site, move it to the bin | No | Yes |
+
+Agents have no App tools: in-app agents, the CLI and MCP clients work through the Space
+tools (`LOCAL_NOTIS_LIST_SPACES`, `LOCAL_NOTIS_GET_SPACE`, `LOCAL_NOTIS_MANAGE_SPACE` with
+its `create`, `rename`, `move`, `trash`, `restore`, `list_bin`, `duplicate`, `list_store`
+and `install` operations, `LOCAL_NOTIS_READ_SPACE_SOURCE`,
+`LOCAL_NOTIS_WRITE_SPACE_SOURCE`, `LOCAL_NOTIS_BUILD_SPACE_SNAPSHOT` and
+`LOCAL_NOTIS_VERIFY_SPACE_SNAPSHOT`).
 
 ---
 
 ## Table of Contents
 
-1. [What A Notis App Is](#what-a-notis-app-is)
+1. [What A Space Is](#what-a-space-is)
 2. [Core Platform Model](#core-platform-model)
 3. [Architecture](#architecture)
 4. [Repository Development Workflow](#repository-development-workflow)
-5. [Creating Apps](#creating-apps)
-   - [Path 1: Build with Notis (chat / Vercel sandbox)](#path-1-build-with-notis-chat--vercel-sandbox)
-   - [Path 2: Build with your local code agent (Cursor, Claude Code, terminal)](#path-2-build-with-your-local-code-agent-cursor-claude-code-terminal)
-   - [Forking an existing app](#forking-an-existing-app)
-   - [Other entry points](#other-entry-points)
-6. [Editing an Existing App](#editing-an-existing-app)
-7. [Publishing to the Public App Store](#publishing-to-the-public-app-store)
-8. [App Contract](#app-contract)
-9. [Main Components](#main-components)
-10. [Runtime Bridge](#runtime-bridge)
-11. [Data Model](#data-model)
-12. [Rendering Model](#rendering-model)
-13. [App Structure Reference](#app-structure-reference)
-14. [SDK Reference](#sdk-reference)
-15. [CLI Command Reference](#cli-command-reference)
-16. [Release-only delivery](#release-only-delivery)
-17. [Design Guidelines](#design-guidelines)
-18. [Non-Negotiable Invariants](#non-negotiable-invariants)
-19. [Where To Look In The Repo](#where-to-look-in-the-repo)
-20. [Agent Guidance](#agent-guidance)
+5. [Creating and sharing Spaces](#creating-and-sharing-spaces)
+6. [The Space Store](#the-space-store)
+7. [Main Components](#main-components)
+8. [Runtime Bridge](#runtime-bridge)
+9. [Data Model](#data-model)
+10. [Rendering Model](#rendering-model)
+11. [SDK Reference](#sdk-reference)
+12. [CLI Command Reference](#cli-command-reference)
+13. [Space delivery](#space-delivery)
+14. [Design Guidelines](#design-guidelines)
+15. [Non-Negotiable Invariants](#non-negotiable-invariants)
+16. [Testing](#testing)
+17. [Where To Look In The Repo](#where-to-look-in-the-repo)
+18. [Agent Guidance](#agent-guidance)
+19. [Instant-view lifecycle and cache ownership](#instant-view-lifecycle-and-cache-ownership)
+20. [Independently authored reports and passive feedback](#independently-authored-reports-and-passive-feedback)
+21. [Embedded SDK build ownership](#embedded-sdk-build-ownership)
 
 ---
+## What A Space Is
 
-## What A Notis App Is
+A **Space** is a place with Editors, pages (views), sub-Spaces and the resources it links
+(see the [product glossary](product-glossary.md#spaces)). Sharing a Space shares its whole
+subtree.
 
-> This section describes the legacy App runtime, kept for accounts not yet moved to
-> Spaces until its release-gated retirement. In Spaces, every database is linked to
-> at least one Space and has one main view (see
-> [View links, main views and agent discovery](#view-links-main-views-and-agent-discovery)),
-> and Skills are linked to Spaces (see
-> [Legacy App Skill paths removed (R9)](#legacy-app-skill-paths-removed-r9)).
-
-A Notis App is the top-level packaging unit for a product experience inside Notis.
-
-A Notis App:
-- is authored as a standard **Vite + React** project using `@notis/sdk`
-- is built as an **ES module bundle** (app.js + app.css) via Vite library mode
-- is installed into the **Notis Portal** and rendered as a **React component** directly in the portal's React tree
-- communicates with the platform through generic SDK hooks (`useTool`, `useTools`, etc.) backed by a `NotisRuntime` provided via React context
-- can reference **databases**, package **views/routes**, and work with **documents**
-- can bundle **automations** by reference (Skills are linked to Spaces, see
-  [Source, links, Skill folders and the lock file](#source-links-skill-folders-and-the-lock-file-r5-decision-10))
-
-Every native database is **owned by exactly one app** (`databases.owner_app_id`,
-enforced NOT NULL with an `ON DELETE CASCADE` foreign key to `apps`). Creating a
-database through `LOCAL_NOTIS_DATABASE_UPSERT_DATABASE` requires the owning
-app's slug or id in the `app` argument; app install/materialization stamps
-ownership automatically. App detail includes both databases declared by the
-source manifest and databases created interactively for that app. Deleting an
-app deletes its databases and their documents. Team/Public publication
-snapshots remain manifest-only: interactive runtime databases and their
-documents are never copied into a store listing.
-
-Automations use one canonical association contract: an automation's
-`owner_app_id` and its owning app's `bundled_automation_ids` membership change
-in the same database transaction. Interactive moves use
-`/portal_apps/resource-association` (`resource_type: automation` only; Skills
-are linked to Spaces, never associated with an App); callers must not edit only
-a bundle array because that leaves collection filters and App Details with
-conflicting ownership. Resource deletes unlink bundle membership through
-database triggers in that same transaction. Store
-customization overlays are derived afterward with compare-and-swap retries; a
-derived-state warning must never make a committed association or deletion look
-like it failed. Persist associations against the installed app ID.
-
-App display names are presentation metadata, not identifiers. The Automations
-filter uses the installed app's name, with readable spaced
-capitalization for legacy lowercase machine names. Preserve deliberate mixed
-casing and acronyms. Keep slugs, app IDs, and resource ownership unchanged when
-correcting a display name. Resources group by their exact installed owner ID;
-there is no local-session identity or development-label substitution. Separate
-apps stay separate: labels use Archived or Unavailable where applicable and
-numbered same-label copies, never raw slugs or UUIDs. Unavailable means the owner
-is absent from the loaded app list; it does not prove deletion. Only eligible
-installed apps remain move targets. Filter pills omit unselected apps with no resources in
-the collection, before assigning same-name numeric labels; the Move to app
-dialog still includes eligible empty apps.
-
-The right mental model is:
-
-```
-Vite + React project + notis.config.ts + ES module bundle + SDK hooks + installed app record
-```
-
-### What an app contains
-
-| Component | Description |
-|-----------|-------------|
-| `notis.config.ts` | Declarative config: app metadata, database slug refs, routes, tool access |
-| `app/` directory | React pages (the UI) |
-| `components/` | shadcn UI components (scaffolded) |
-| `vite.config.ts` | Vite config wrapped with `notisViteConfig()` |
-| `.notis/output/` | Built artifact: manifest.json + bundle/app.js + bundle/app.css |
+- A **view** is a Space with an interactive presentation. Its source is a Vite + React
+  project using `@notis/sdk`: a workspace index declared with `defineSpaces` and one
+  `defineSpace` definition per Space (`@notis/sdk/config`), built into a frozen source and
+  artifact snapshot by `notis spaces build`.
+- Databases, Skills and automations are **linked** to Spaces by reference, never copied.
+  Every database is linked to at least one Space and has one main view (see
+  [View links, main views and agent discovery](#view-links-main-views-and-agent-discovery)).
+  A Skill is linked under an alias (see
+  [Source, links, Skill folders and the lock file](#source-links-skill-folders-and-the-lock-file-r5-decision-10));
+  every former App Skill became a native Skill with the same id, linked to its converted
+  Spaces.
+- A Space's source changes reach people only as a published revision (see
+  [Space delivery](#space-delivery)).
 
 ---
 
 ## Core Platform Model
 
-Notis Apps are intentionally a frontend-product platform centered on a standard Vite + React project.
-
 ### Subscription entitlement
 
-Since the 2026-08 pricing re-cut the builder ladder is **all-tier**: the
-`apps_builder` entitlement is granted on every tier including FREE, so
-installing, running, developing, and deploying apps are available to any
-signed-in user. Entitlements resolve from the tier map in
+Building Spaces is available on every tier. Entitlements resolve from the tier map in
 `server/lib/plan_entitlements.py`, not from `prices.*` booleans (see
-`server/lib/subscription_utils.py`); `apps_external_development` is collapsed
-into `apps_builder` and is no longer read.
+`server/lib/subscription_utils.py`). The builder entitlement keeps its historical key,
+`apps_builder`, granted on every tier including FREE; `apps_external_development` is
+collapsed into it and is no longer read.
 
-What is still tiered is not the builder — it is the compute and the resources an
-app carries. Letting **Notis** write and deploy the code for you needs the Cloud
-Computer (PRO and above). Bundled automations still need PRO+.
+What is still tiered is the compute and the resources a Space carries. Letting **Notis**
+write and deploy the code for you needs the Cloud Computer (PRO and above). Automations
+still need PRO+.
 
-Reviewed native App/database tools are different: they declare PostHog `spaces`
-for visibility and no App/database plan entitlement. Once their surface allows
-them and `spaces` resolves true, they execute without a second App gate. Skills,
-automations, and Cloud Computer work invoked during an app workflow still
-enforce their own central entitlements.
+Reviewed native Space and database tools declare PostHog `spaces` for visibility and no
+plan entitlement. Once their surface allows them and `spaces` resolves true, they execute
+without a second gate. Skills, automations, and Cloud Computer work invoked during a Space
+workflow still enforce their own central entitlements.
 
 Two PostHog flags gate these surfaces (`server/lib/feature_flags.py`):
 
-- `spaces` gates Spaces, Apps, native databases, reports, their Manager
-  mentions, database automations and the curated Skills that teach them.
-- `spaces_store` gates only the Store: the `/store` page and its sidebar entry,
-  Publish to Store in a Space's sidebar menu, the Store updates section of the
-  Spaces home, the `portal_spaces/store-*` endpoints behind `notis spaces store`
-  (the CLI onboarding brief offers that fallback only when `notis spaces store
-  list` answers), and the legacy App Store: its endpoints (`portal_app_store`,
-  `portal_app_install`, `portal_app_templates`), the publishing routes of
-  `portal_apps` (listing assets, publish and editing a submission, behind
-  `notis apps publish` and the App page's Publish to Store, View in Store and
-  listing checklist, which hide without it), and the Store App tools that
-  browse or install (`LOCAL_NOTIS_LIST_PUBLIC_APP_STORE`,
-  `LOCAL_NOTIS_INSTALL_APP`, `feature_flag: spaces_store`, which also refuse at
-  execution). It is a part of Spaces, so every Store entrypoint also requires
-  `spaces` (a native tool's `spaces_store` is evaluated after `spaces`);
-  `spaces_store` alone opens nothing. This lets Spaces ship before the Store.
-- Managing a legacy App that was already published or installed from the Store
-  stays on `spaces`, so an account without the Store keeps it: reading and
-  withdrawing submissions, unpublishing, applying, resolving and resetting a
-  Store update (and `LOCAL_NOTIS_GET_APP_UPDATE_CONTEXT`,
-  `LOCAL_NOTIS_SAVE_APP_UPDATE_RESOLUTION`,
-  `LOCAL_NOTIS_RESET_APP_CUSTOMIZATIONS`), and the App page's Store status
-  badges, update banner, Unpublish and Reset to Store version. Unpublishing
-  therefore always unlocks a published App's visibility.
+- `spaces` gates Spaces, native databases, reports, their Manager mentions, database
+  automations and the curated Skills that teach them.
+- `spaces_store` gates only the Store: the `/store` page and its sidebar entry, Publish to
+  Store in a Space's sidebar menu, the Store updates section of the Spaces home, the
+  `portal_spaces/store-*` endpoints behind `notis spaces store` (the CLI onboarding brief
+  offers that fallback only when `notis spaces store list` answers), and the `list_store`
+  and `install` operations of `LOCAL_NOTIS_MANAGE_SPACE`, which refuse at execution
+  without it (the tool itself is `feature_flag: spaces`, and its `duplicate` operation
+  needs only `spaces`). It is a part of Spaces, so every Store entrypoint also requires
+  `spaces`; `spaces_store` alone opens nothing. This lets Spaces ship before the Store.
 
-The retired `store` key gated Apps, databases and the Store together before
-this split. Current code never evaluates it: it reads a curated skill row's
-`store` as `spaces` (the sync keeps writing `store` there until production runs
-the split; see [Notis skills lifecycle](notis-skills-lifecycle.md)) and expands
-a local `FEATURE_FLAG_FORCE_ON` of `store` to `spaces,spaces_store`.
+The retired `store` key gated Spaces, databases and the Store together before this split.
+Current code never evaluates it: it reads a curated skill row's `store` as `spaces` (the
+sync keeps writing `store` there until production runs the split; see
+[Notis skills lifecycle](notis-skills-lifecycle.md)) and expands a local
+`FEATURE_FLAG_FORCE_ON` of `store` to `spaces,spaces_store`.
 
-After PostHog resolves `spaces=true` (and `spaces_store=true` for the Store),
-the Portal may use an active team relationship to scope Team Store listings. A
-team relationship never overrides a false, missing, or unavailable PostHog
-decision for Spaces or Store UI, tools, or skills.
+After PostHog resolves `spaces=true` (and `spaces_store=true` for the Store), the Portal
+may use an active team relationship to scope Team Store listings. A team relationship
+never overrides a false, missing, or unavailable PostHog decision for Spaces or Store UI,
+tools, or skills.
 
-| App action / Notis tool | Minimum plan | Denied response |
+| Action / Notis tool | Minimum plan | Denied response |
 | --- | --- | --- |
-| Browse Store and inspect listings | Signed-in user | No billing gate; hidden unless PostHog `spaces` and `spaces_store` allow it |
-| Install and run apps | FREE | No billing gate |
-| Reviewed native App/database tools | No App entitlement | Hidden unless surface + PostHog `spaces` allow them |
-| CLI app source/build/deploy commands | FREE | No billing gate |
-| Portal source/build/publish workflows | FREE | No billing gate |
+| Browse the Store and inspect listings | Signed-in user | No billing gate; hidden unless PostHog `spaces` and `spaces_store` allow it |
+| Reviewed native Space/database tools | No plan entitlement | Hidden unless surface + PostHog `spaces` allow them |
+| CLI Space source, build and publish commands | FREE | No billing gate |
 | Six native skill-management tools | FREE | Skills are an all-tier entitlement |
 | Nine native automation-management tools | PRO+ (an Editor acting on a linked automation: its owner's plan) | Canonical `automations` entitlement response; `automation_owner_plan_required` for a lapsed owner |
 | Cloud Computer shell/files | PRO | Canonical `cloud_computer` entitlement response |
 | Notis-builds-it-for-you (sandbox authoring chat) | PRO | Canonical `cloud_computer` entitlement response |
 
-Installing an app materializes the app UI, routes, databases and starter
-documents on every tier; Apps carry no Skills (a listing snapshot published
-before Skills moved to Spaces keeps its `bundled_skills`, which installs,
-duplicates, activation and Store updates ignore). Bundled **automations** remain pending below
-PRO+ and the response reports their counts; onboarding opens with a persistent
-PRO+ ribbon instead of failing before the chat appears. After an upgrade, the
-first PRO+ onboarding explicitly activates those pending assets, maps them to
-installer-owned IDs, and refreshes the Store-install baseline without treating
-activation as a customization. Duplicating a source app is an all-tier runtime
-action unless duplication would materialize bundled automations, in which case
-the backend requires PRO+ before creating any copy; it never bypasses the normal
-resource entitlement by cloning them directly.
+Trials mirror the selected plan. After a downgrade, Spaces and their data stay available
+and the CLI keeps working; only the resources that carry their own entitlement
+(automations, cloud sandbox) lock. Never delete Space data as a subscription side effect.
 
-Trials mirror the selected plan. After a downgrade, installed apps and their
-data stay available and the CLI builder keeps working; only the resources that
-carry their own entitlement (automations, cloud sandbox) lock. Cleanup actions
-such as unpublish, withdraw, reset, and delete remain available. Never delete
-app-owned data as a subscription side effect.
-
-When the PostHog `spaces` flag is false, missing, or unavailable, the Portal
-hides Spaces, the Store and installed app surfaces, direct Store/App routes
-redirect to Manager, and Manager neither loads nor accepts database/app/view
-mentions. When only `spaces_store` is not true, Spaces and Apps stay and only the
-Store entry, the `/store` routes (which redirect to Manager) and Publish to
-Store disappear; the server refuses Spaces Store requests with
-`spaces_store_unavailable` and legacy App Store requests with `STORE_NOT_ENABLED`.
+When the PostHog `spaces` flag is false, missing, or unavailable, the Portal hides Spaces
+and the Store, direct Store routes redirect to Manager, and Manager neither loads nor
+accepts database or view mentions. When only `spaces_store` is not true, Spaces stay and
+only the Store entry, the `/store` routes (which redirect to Manager) and Publish to Store
+disappear; the server refuses Spaces Store requests with `spaces_store_unavailable`.
 Active team members and owners follow the same visibility boundary. Their team
 relationship scopes shared content only after PostHog resolves the flags true.
-
-The canonical flow is:
-
-1. The app is created or updated using the Notis CLI.
-2. The app declares metadata, database slug refs, routes, and tool access in `notis.config.ts`.
-3. The app is built as an ES module bundle with a generated `manifest.json`.
-4. The bundle is saved to platform storage and associated with the app record on the Python backend.
-5. The Portal dynamically imports the bundle and renders the app's route components directly in its own React tree.
-6. The portal provides a `NotisRuntime` via React context so the app's SDK hooks can query databases and call approved tools.
 
 ---
 
 ## Architecture
 
 ```text
-Notis CLI (local workspace or Vercel Sandbox)
-  -> notis.config.ts + app/ + @notis/sdk
-  -> notis apps init / build / create / link / deploy
-  -> .notis/output/ (bundle/app.js + bundle/app.css + manifest.json)
+Space source (local workspace or Vercel Sandbox)
+  -> defineSpaces index + defineSpace definitions + views + @notis/sdk
+  -> notis spaces pull / build / verify / deploy (or preview, then promote)
+  -> frozen source and artifact snapshot (one app.js ES module + app.css)
 
-Bundle + platform
-  -> /cli_tools (upload bundle)
-  -> Supabase Storage app-code/{app_id}/v{version}/
-  -> Supabase Storage app-source/{app_id}/v{version}/
-  -> apps table manifest/current_version update
-  -> /portal_views/get (returns signed bundle URLs)
-  -> Portal dynamically imports bundle
-  -> Renders as React component with NotisRuntime context
-  -> /portal_views/runtime_query (database ops, tool calls)
+Platform
+  -> /portal_spaces/source-publish (or source-stage, then source-promote)
+  -> immutable Space source revision
+  -> /portal_spaces/open and /portal_spaces/presentation (runtime descriptor, signed bundle URLs)
+  -> Portal dynamically imports the bundle
+  -> Renders as React component with the NotisRuntime from portal/src/lib/spaceRuntimeBridge.ts
+  -> /portal_spaces/action, /portal_spaces/viewer-read and record reads for data
 ```
 
-The two halves of the bundle travel by different transports, which matters in the desktop
-app: `app.js` is fetched and executed from a blob URL, while `app.css` is a
-`<link rel="stylesheet">` injected into the app's shadow root. Nothing from the Portal's
-own stylesheet crosses that shadow boundary, so if the link fails the app renders as raw
-unstyled HTML and keeps working — see `electron/src/contentSecurityPolicy.ts`. When the
-descriptor carries no `css_url` at all, the server logs `No css_url resolved for app`.
+The two halves of the bundle travel by different transports, which matters in the
+desktop app: `app.js` is fetched and executed from a blob URL, while `app.css` is a
+`<link rel="stylesheet">` injected into the view's shadow root. Nothing from the Portal's
+own stylesheet crosses that shadow boundary, so if the link fails the view renders as raw
+unstyled HTML and keeps working; see `electron/src/contentSecurityPolicy.ts`.
 
-All Notis apps are built using the Notis CLI. The CLI runs either locally in a repo workspace or inside a Vercel Sandbox. The platform contract is the same regardless of where the CLI runs:
-- the agent edits files directly in the workspace
-- the agent uses the Notis CLI
-- build, develop, create, link, and deploy happen through CLI commands
+Space source is built with the Notis CLI, locally in a workspace or inside a Vercel
+Sandbox. The contract is the same wherever the CLI runs: the agent edits files in the
+workspace, then builds, verifies and publishes through `notis spaces` commands.
 
 ---
 
@@ -291,8 +201,8 @@ The full live terminal stream is written to `.context/terminal.txt`. The file is
 
 Conductor stages uploaded environment files outside every checkout and applies
 them under a kernel-released advisory lock. Its repository/workspace scripts
-resolve the installed Conductor app first and address its databases by exact id;
-a same-slug database owned by another app is never a fallback write target.
+resolve the Conductor Space first and address its databases by exact id;
+a same-slug database owned by another Space is never a fallback write target.
 
 Required secrets:
 
@@ -442,13 +352,11 @@ Rules:
 
 ---
 
-## Creating Apps
+## Creating and sharing Spaces
 
-Workspace runs released versions only. Both Notis Manager and external coding agents use the
-[release-only delivery workflow](#release-only-delivery). Portal-generated create/edit prompts are
-owned by `portal/src/lib/appTemplateGallery.ts`; the Store entrypoint uses the same generator.
-Scaffolding and source changes stay local until verification passes. The engineering `dev.sh`
-stack, CLI worktree profiles and coding-agent bridges remain independent of app delivery.
+A Space's source changes reach people only through a published revision; see
+[Space delivery](#space-delivery). The engineering `dev.sh` stack, CLI worktree profiles
+and coding-agent bridges stay independent of Space delivery.
 
 ### Editor and owner rollout evidence
 
@@ -577,11 +485,9 @@ automation, and turning a Site off revokes it at once.
   that would put a Space inside itself becomes a conflict. Each conflict carries the
   name of the installer's copy of the item (`conflict_items`). Unpublishing stops
   new installs and leaves copies untouched. In the Portal, the sidebar Store
-  (`/store`) is the Space Store for an account on Spaces (your team and everyone,
-  with install, update and unpublish); the App Store there stays only for accounts
-  not yet moved, until the legacy runtime's release-gated retirement, and nothing
-  redirects between the two. The Spaces home lists only installed copies with an
-  update or a conflict to settle.
+  (`/store`) is the Space Store (your team and everyone, with install, update and
+  unpublish). The Spaces home lists only installed copies with an update or a
+  conflict to settle.
 
 Rollout: the SQL lives in `migration/pending-production/20260926_spaces_*.sql`
 and `20260927_spaces_*.sql` and is installed only on the isolated Spaces project
@@ -740,7 +646,7 @@ Remaining risk, which per-Site origins (a wildcard domain on the Public Suffix L
 
 ### Selected Space source verification during the cutover
 
-Spaces, Apps and SDK reports use the canonical SDK Shadow presentation. The
+Spaces and SDK reports use the canonical SDK Shadow presentation. The
 selected-Space verifier renders through that same component with a synthetic
 runtime; no iframe SDK host or postMessage transport remains. Space bundles must
 export `SpaceView` exactly. Shadow DOM provides style isolation only, not isolation
@@ -1109,11 +1015,11 @@ export default defineSpace({ name: 'Catalog', entry: './view.tsx', viewerReads: 
 
 #### Cloud computer in Spaces (`cloudComputer`)
 
-A Beta App that declared `capabilities.cloudComputer: 'shell'` ran
-`LOCAL_NOTIS_RUN_SANDBOX_SHELL` and `LOCAL_NOTIS_UPLOAD_SANDBOX_FILE` from its views once the
-viewer consented (`cloud_computer_shell`); that is how Conductor's Check dev, Sync, Archive,
-Connect GitHub and environment file upload ran without a conversation. A Space gets the same
-power, and no more, through one reviewable declaration (`server/lib/space_cloud_computer.py`):
+A Space page can run one command or write one file on each viewer's own cloud computer once
+that viewer allows it; that is how Conductor's Check dev, Sync, Archive, Connect GitHub and
+environment file upload run without a conversation. The power comes from one reviewable
+declaration and nothing else (`server/lib/space_cloud_computer.py`); a page without it is
+refused with `cloud_computer_undeclared`:
 
 ```ts
 export default defineSpace({ name: 'Workspaces', entry: './view.tsx', cloudComputer: 'shell' });
@@ -1132,7 +1038,7 @@ export default defineSpace({ name: 'Workspaces', entry: './view.tsx', cloudCompu
   the tool's own `cloud_computer` entitlement, sandbox path and credit checks; never the Space
   owner's or a grant issuer's. Sites, link bearers, CLI-scoped tokens
   (`cloud_computer_portal_only`), agent renders and verification harnesses never get it; the
-  viewer must be a current Editor. Dispatch uses Beta's views surface (`portal_views`): a shell
+  viewer must be a current Editor. Dispatch runs in `server/lib/space_cloud_computer.py`: a shell
   call syncs the viewer's skills first (Conductor runs `workspaces-shared` scripts), and a file
   write never starts a stopped cloud computer. Out of credits answers `credit_cap_reached`
   (402); a credit check that cannot be read never refuses the run (billing outages fail open,
@@ -1164,13 +1070,12 @@ export default defineSpace({ name: 'Workspaces', entry: './view.tsx', cloudCompu
   again; republishing the approved code itself keeps the approval. Code without a digest can never
   be approved (`cloud_computer_approval_unavailable`).
 - **What this protects, and what it does not.** Space source is not a JS sandbox: it runs in the
-  Portal realm with the viewer's signed-in session, as Beta Apps did. The prompt, the trusted
+  Portal realm with the viewer's signed-in session. The prompt, the trusted
   click, the click delay and the pin protect a viewer from code they did not review that reached
   the Space by mistake or in good faith (a teammate's release, a Store update). They are not a
   security boundary against hostile page code: page code in the Portal realm can still forge an
   approval and run commands as the viewer (it holds the viewer's session and can call
-  `POST /portal_spaces/cloud-computer` with `approve`, then `run`), exactly as Beta App code can
-  grant itself a capability through `/portal_apps/capabilities/grant`. Treat Editor access to a
+  `POST /portal_spaces/cloud-computer` with `approve`, then `run`). Treat Editor access to a
   Space whose page declares `cloudComputer` as the power to run commands on each viewer's cloud
   computer. Making it a boundary needs a host-only step the server can verify (a confirmation
   outside the Portal tab, such as a Desktop native dialog, or a cross-origin Space runtime).
@@ -1502,586 +1407,23 @@ repoint --legacy-id <app-id> --route <slug> --space <space-id> --expected-space
 that moved since it was listed. `extra:` page aliases are not repointed, and the
 new Space still checks access for everyone who opens the link.
 
-The converted root's **App details** menu and bare `/apps/<installed-app-id>`
-link retain the original install's version, screenshots, description and release
-notes through `portal_spaces/app-details`. This display-only projection requires
-both current, unscoped Editor access to that exact root and ownership of the
-original installed App. Shared Space access alone never exposes another owner's
-install metadata; its old link continues to the accessible Space instead. No
-legacy source, resources, publication controls or CRUD capability is returned.
-**Uninstall app** uses the normal Space Bin confirmation and revision-checked
-subtree lifecycle, with its existing restoration window, never legacy `deleteApp`.
-Converted details do not run the old App's ten-second poll or subscriptions.
-
-#### Conversion rules every App follows (round 6)
-
-Beta, the App as installed, is the source of truth. The pure rules live in
-`server/lib/space_conversion_rules.py`; the planner (`plan_legacy_app_conversion`)
-records some of them on the packet, the release gate applies rules 1, 2, 3 and 5, and
-the checked cutover steps live in `server/lib/space_conversion_cutover.py` (dry run by
-default, read back after writing). The staging read (`read_notis_space_app_migration`)
-carries no legacy source, connections or tool support, so the packet records `None`,
-never a default, for every field that needs that evidence.
-
-How a legacy App becomes Spaces for any account: `stage_app_migration`
-(`space_migration_cohort.py`) plans the packet and `stage_notis_space_app_migration`
-creates the root container, one presentation Space per route (`route_space_id`), the
-bindings, membership and route aliases, all with no source (revision 0). A route page
-exists only once a rebuilt source is released for its Space through
-`server/lib/space_source_release.py` (`notis spaces verify` / `deploy`, the confined
-build, candidate staging). That release is where markup, record UI, declared actions
-and SQL reads enter a converted page, so it is where the rules run:
-
-- **Automatic, at staging:** rule 6 (root description) and the packet fields of rules 1
-  and 3 (`installed_source`, `preserve_markup`, `provider_actions` pending even when
-  unconnected), for every account.
-- **Automatic, at every release of a converted App route:** rules 1, 2, 3 and 5
-  (`server/lib/space_conversion_gate.py`). `verify_space_source` runs the gate and
-  returns its decision as `conversion`; `_release_space_source` (publish and stage) runs
-  it again before anything is journalled, uploaded or granted, so a caller's
-  verification cannot skip it. It applies while the App's `space_migration_items` row is
-  `staged` and the account's `space_migrations` row is not `ready`, to the staged route
-  Space, a rebuilt route page with its route alias, or one matched by name
-  (`rebuilt_route_pages`), until that page has a published revision. The gate holds a page
-  while the conversion produces it: once released, the page is converted and every later
-  release is its owner's change, so differences the owner approved (French copy, removed
-  Set up buttons, Beta-matching fixes) are never re-checked against the installed App, and
-  an imported account whose pages were already converted and published keeps releasing them
-  while its migration is still staged. The App root, pages the conversion added (`extra:`
-  aliases), published route pages, ordinary Spaces and live accounts are not gated. It
-  reads the installed release from App storage (`download_app_source` on the packet's
-  `installed_source`) and compares the route's own page, the App layout and their
-  imports (the whole release when they cannot be traced). A failure is `409 conversion_rules_unmet` with every issue
-  (`rule`, `reason`, `tool` or `action`); an unreadable installed release is the
-  retryable `409 conversion_source_unavailable`. Nothing is granted or connected.
-- **Operator steps:** rules 4, 7, 8 and 9 below.
-
-1. **Installed release** (packet field at staging; release gate, automatic). Each
-   presentation carries `installed_source`: a private App's own release
-   (`<app id>/v<manifest.version>/`), or for a Store install the publisher release its
-   copied manifest names (`source_app_id`, `version`, `<publisher id>/v<n>/`, with the
-   listing ids beside it). A Store install whose owner deployed their own release runs that
-   release. The release gate reads exactly that release, never a sibling's or the public
-   listing's newer one, and refuses (`rule: 1`) Set up buttons, Skill launchers,
-   PageHeading, eyebrows, `bg-card` panels and `created_at` sorts the installed route
-   lacked (`markup_additions`). An App with no released bundle, or no stored source, has
-   nothing to compare: the gate records `installed_release_missing` or
-   `installed_source_files_missing` in `notes` and checks rules 3 and 5 only.
-   `source_issues` and `audit_converted_app` remain for a rebuild lane that wants the
-   same answer before releasing.
-2. **In-place selection** (release gate, automatic). The gate decides `record_selection`
-   from the installed route's own source: `pane` when it rendered the record body itself
-   (`NativeRecordPane`, `ShareControl`, `DocumentEditor` or the SDK `MarkdownEditor`), else
-   `in_place` (the record param stays, as the database's main view, and the row is only
-   highlighted). An `in_place` page that adds a record pane, Share, document editor or
-   body editor is refused (`rule: 2`); a `pane` page keeps its record UI (Notes renders its
-   own record body and opens records inside the Space, decision 4). The packet field stays
-   `None` because staging reads no source.
-3. **Provider tools stay declared** (packet field at staging; release gate, automatic).
-   `provider_actions` lists the tools the legacy runtime gave each page: a route's
-   `tool_access` declaration (`base.tools`, `base.direct_tools`, `base.preload_tools`)
-   replaces the App's `manifest.tools` for that route, as `_resolve_runtime_tool_manifest`
-   does; any other route uses `manifest.tools` (`tool_bindings` add no tool). Each entry is
-   `pending_owner_approval`; `connected` and `supported` are `None` without evidence and never
-   drop an entry. Recording an entry grants nothing: the owner still approves each grant.
-   The release gate (`route_provider_reads`, then `undeclared_provider_actions`) refuses a
-   page that does not declare a read its installed route used (`rule: 3`): every tool of
-   the route's own `tool_access`, and each App-wide tool the route's page or imports name
-   (all of them when that source is unknown). Writes wait for review and native database
-   tools are database bindings, so neither is required. A declared read whose provider is
-   not connected still needs the owner's connection and grant when the release authorizes
-   its actions: the page waits for that approval rather than being rebuilt without the read.
-4. **Old link selections** (cutover step; resolver live). `selection_routes` lists routes with
-   `resourceDeepLinks`. After the page is published, the operator runs
-   `record_alias_selection_param`, which stores the declared param receiving `resource` /
-   `item` on `space_legacy_aliases.selection_param` (the view manifest's param name pattern,
-   underscores allowed). `resolve_space_alias` then carries text ids (Atlas table,
-   competitor, submission; Platform Health incident) onto it; a number param receives the
-   old value as URL text.
-5. **information_schema emulation** (release gate, automatic; the rewrite is the lane's).
-   Space reads run as `supabase_read_only_user` (SELECT only). The lane that writes a
-   converted Website read into Space source runs `grant_select_visibility` on it (or
-   compiles it with `prepare_converted_read`), which adds SELECT as visibility to emulated
-   `table_constraints` and `constraint_column_usage` (`pg_constraint` is world readable;
-   nothing new is exposed). The release gate runs `information_schema_visibility_issues` on
-   every declared action's `query` (string, `$literal` or `$sql` parts) and refuses the
-   release (`rule: 5`, with the action name) while one would still hide constraints. The
-   gate never rewrites a release: its SQL is part of the source digest and grant template.
-6. **Root description** (planner, applied). The root Space takes the App's own description
-   (whole sentences up to 300 characters, empty when the App has none), never conversion wording.
-7. **Extra pages** (cutover steps). Before an account goes live the operator runs
-   `unrecorded_conversion_pages`. Its `route_without_alias` list holds App route pages rebuilt
-   after conversion (found by name, as old links and the sidebar find them); they get their
-   route alias from `record_route_aliases`, never an extra one, and `record_extra_page_aliases`
-   refuses them. Its `extra_candidates` list holds the other pages without an alias (trashed
-   ones left out): each page the conversion created gets an `('app', App id,
-   'extra:<space id>', space id)` alias from `record_extra_page_aliases`, so the sidebar starts
-   it hidden; a page someone added later is left as it is. `route_without_alias` must be empty
-   before going live.
-8. **Store listings** (cutover step, off). `plan_store_listing_carryover` maps each published App
-   listing to its root Space; `carry_store_listings` publishes through the Space Store only
-   when `NOTIS_SPACES_STORE_CARRYOVER=on` (off by default, pending decision D20). A team
-   listing is refused when the publisher's current team is not the listing's team (the Space
-   Store publishes to the current team). A public listing goes back to Store review
-   (`review: needs_review`) and is not in the public Store until approved.
-9. **Cutover data** (cutover steps). Convert records at cutover and check
-   `check_records_current` (the newest record included); `replay_isolated_schema` adds
-   properties that exist only on the isolated copy (for example the Rolls Mode, Min, Max,
-   Rolled At) before the Space goes live.
-
-The App-row mutation fence shares staging's row lock. Finish or reconcile any
-legacy deployment claim (including expired claims) or lifecycle operation before
-staging; a later old release cannot claim, modify or delete the retained App.
-Use the explicit operator-only migration reader for frozen legacy inventory,
-not a request-controlled bypass. Purpose-scoped legacy document credentials
-also have restrictive document and sync-metadata fences; only legacy direct
-databases and standalone documents retain that protocol. They receive no auth
-schema, database-table or authenticated-role privileges. Native records require
-the canonical Space/record authority and native collaboration broker.
-
-Joining a native record's live session is kept short without skipping a check. The
-Space document editor's record read asks for the collaboration credential
-(`record-ui` `read` with payload `{collaboration: true}`, `editorReadAsksCollaboration`;
-Sites and read-only editors never send it). The read answers at once, so the note shows
-read-only while its credential is on its way. Only for a writable Markdown note (never
-HTML pages, reports, files, archived records or action-only bindings) does it carry
-`collaboration_receipt`: a 60-second token, signed with its own scoped secret, naming
-the signed-in Editor, the published view (Space, revision, record context), the record
-and the binding that read checked. The record client asks for the credential with it
-right away (`record-ui` `collaboration` with payload `{receipt}`). The receipt stands
-only for the record UI read, never for its gates: the server first runs the read's gates
-in the read's order (sign-in, the published view, the Editor role, then the preview
-refusal), refuses a receipt for another person, view or record, an expired or forged one
-(`record_changed`), and has the issuance judge those gates, with the view's declaration
-and pinned binding, before it reads anything of the record (`issue_native_collaboration`
-`view_gate`, run together with the binding resolution). The issuance then runs every
-check of the `collaboration` operation's issuance (exact target, record, published view
-and Editor role again). What the receipt saves is the repeated record UI read (`_read`:
-description, record query, view projection and rechecks); the issuance still loads the
-record and its CRDT state under the exact binding. A refused credential is asked
-for once more by the editor's join, without a receipt, which shows why. The
-receipt and token stay in the record client, never in the snapshot host components hold.
-Record reads started in the same task share one request (the scaffold's
-`RecordProperties` and `DocumentEditor`), which asks if any of them does; an editor that
-mounts after a plain read already went out reads again with the option, in parallel,
-instead of waiting for that read and asking afterwards. When the read brought neither
-(an API from before this option, which refuses it and is read again without it), the
-editor asks for it while it mounts (`prepareCredential`, `liveEditorRecordKey`). A
-read's row projection and its two rechecks (the record still at that revision, the
-view's authority unchanged) start together, and the view-context check's two reads
-(the Space execution and the binding) run together too; nothing is released until all
-of them answered, and their refusals are judged in their original order. A
-prepared credential serves the first join only, within 30 seconds; an unused one is
-then dropped on a timer, and it passes the same open-Space and signed-in check as a
-fresh one. The
-sidecar opens the room from the record Python returned with that socket's
-`authorize` answer (the same authorization and record `load` returns) instead of
-loading it again and does not render the body as Markdown for a join. The socket's
-first message, its opening sync request (a plain sync step 1), is answered from that
-room without a second Python check when it arrives within 5 seconds of the upgrade
-(`JOIN_SYNC_REPLY_MS`, covered by the upgrade's own fresh authorization). The state is
-sent once, as that reply, never unasked, so the first sync reply an editor receives
-is the one to its own opening request. Every other message the socket sends is still
-checked against Python.
-
-Native agent and CLI document-body operations use the same generic CRUD tools
-and broker as the Space editor. Discover the exact target and body variants
-through `GET_DATABASE` or the selected Space; do not derive an owner's database
-target. `QUERY` takes `input:{mode:"document_body",record_key}` and returns the
-current Markdown plus record/schema revisions. `UPDATE` replaces the body with
-`input:{record_key,expected_revision,content_markdown}` plus the original
-`schema_revision` and stable `request_id`. Body and property writes are separate
-acknowledged commands, not one atomic update. A declared-action `QUERY` body read
-(also the Space `document-body` read) loads the record and its recheck without the
-private CRDT state, which only a live room load needs; the Markdown is rendered from
-the blocks that read returned.
-
-For a declared action, `target` is the body-capable UPDATE and `read_target` is
-its explicit matching QUERY from discovery. Both retain current Space, record,
-source and binding authority; a rejected action never falls back to direct
-Editor or creator access. Direct Editor/standalone calls omit `read_target` and
-use one canonical native target. Anonymous/link body editing is not supported.
-Discovery separates Markdown transport from the source declaration's generated
-query/BlockNote schema, which is still validated at execution. A property-only
-action does not confer body permission.
-
-Direct command credentials pin the original schema and exact target into their
-receipt digest, while ordinary collaboration-room credentials retain their
-existing protocol. The sidecar cannot substitute a newer schema on commit.
-Exact receipt recovery precedes stale-revision checks and fresh Markdown
-parsing; saved effects use native receipts (and paired action receipts only in
-the declared-action lane). `unchanged` means no effect, not a fabricated receipt.
-`document_outcome_unknown` requires the same original command on retry, never a
-new request ID or an assumed successful save from the sidecar HTTP response.
-
-Skill cutover follows the exact current `owner_app_id`, not a source URL, name,
-or original creator. Legacy lists, citations, runtime inventories and sync pull
-exclude Skills owned by a staged App; direct edits and publication reject them.
-A failed inventory read is an error, never a successful empty sync. An
-authoritative empty inventory removes managed stale mirrors. Skill lists and
-sync carry no App ownership annotations (`origin`, `owner_app_id`,
-`owner_app_name`, `app_owned`). Authenticated clients cannot read or mutate `app-code/skill-sync/` directly,
-including historical keys; checked server hydration serves standalone bundles.
-This does not recall bytes or signed URLs already delivered before cutover.
-
-Before a legacy Skill provider/storage operation or team publication, acquire
-the exact durable Skill-effect claim, including for standalone Skills. Claims
-prevent ownership reassignment and staging while the operation is unresolved.
-Release only after a known complete outcome, or before any remote effect began;
-cancellation, provider ambiguity and unconfirmed cleanup retain the claim for
-reconciliation. Never infer completion from elapsed time or retry the provider
-effect to clear a claim. Current Space Skill reads are a separate exact-binding
-path; neither retained Skill ownership nor the claim grants Space execution.
-
-Migrated or explicitly native, available, non-curated Skills use one native
-definition writer through direct ownership or a Space authoring target:
-
-```bash
-notis skills read --target '{"space_id":"<space-id>","binding_id":"<binding-id>"}' --files
-notis skills update ./skill-edit.json --request-id <stable-edit-key> --dry-run
-```
-
-For a direct read, use `notis skills read <skill-id> --files`. The same update
-command accepts either returned target. Space targets retain the Spaces OAuth
-scope, protocol and rollout checks; renaming the command does not widen access.
-There is no alternate Space Skill command group or authoring-route alias.
-
-The edit file retains the returned `target` and `version`, and supplies either
-`skill_md` (preserving every supporting file) or a complete base64 `files` map.
-Name/description-only edits may omit both; they preserve the accepted baseline's
-effective Markdown and all supporting files, not a newer head discovered during retry.
-After checking, repeat without `--dry-run`. Current whole-Space Editor access is
-required at read, upload admission, commit, and exact-request replay. Native
-content is keyed by the existing Skill ID, so all including Spaces see the same
-edit. The legacy row, creator/provenance, personal inventory and provider Skill
-versions remain unchanged. Standalone legacy and curated Skills do not acquire
-this writer implicitly; a failed Space request never falls back to creator access.
-
-Native bundles use immutable verified objects. Failed reads do not drop helper
-files, and failed/uncertain uploads retain their intent for reconciliation; retry
-the same request instead of creating another edit. Source verification captures
-Skill content versions separately from binding identities. Begin/seal/promotion
-reject a changed version; an already-published Space continues to use the live
-shared Skill. Skill edits made inside a pulled Space source travel with the
-release and are committed by its promotion, together with its link changes and
-the new source, in one transaction (see "Source, links, Skill folders and the
-lock file" above). Its SQL (`20260927_spaces_source_skills.sql`) was applied to
-Main with the Spaces packet on 2026-10-10.
-
-Fresh Space-native Skills use `notis skills create ./skill-create.json
---request-id <stable-key> --dry-run`, then the same request without `--dry-run`.
-The file contains `destination:{space_id,alias,revision}`, `name`, optional
-`description`, and either `skill_md` or complete base64 `files`. Creation verifies
-immutable bytes before committing one new Skill identity, content head and
-included binding. It creates neither an App nor provider activation. Reuse the
-original request and bytes after a lost reply; a new request is a new intent.
-
-Standalone creation uses `notis skills create ./skill.json --request-id <stable-key>
---dry-run`, then the same command without `--dry-run`. The file contains `name`,
-optional `description`, and exactly one of `skill_md` or complete base64 `files`.
-The CLI supplies the explicit standalone destination; callers cannot choose an
-owner. One actor-owned native identity/head is created without an App, Space,
-binding or provider Skill. Listing a standalone Skill in a Space afterwards is a
-link change on the Skill (`notis skills links <skill-id> --add '[{"space_id":
-"<space-id>","space_revision":<revision>}]' --request-id <stable-key>`, or `links`
-on `LOCAL_NOTIS_UPDATE_SKILL`); it requires the destination Space's Editor and
-preserves identity, content and the owner's personal settings.
-
-Install the gated native-Skill schema and marker-aware readers together before
-enabling creation. `native_skill_resources` owns explicit lifecycle and direct
-authority; a null legacy App owner or zero references does not mean standalone.
-Space-created identities have no legacy personal owner, and nullable creator
-provenance must not block retention by another Editor. This resource-level
-boundary is not certification of the whole account-deletion workflow. Existing
-standalone legacy Skills require an explicit supported transition, not implicit
-content shadowing when they are linked.
-
-Standalone native instructions carry a checked Skill identity, access revision
-and content revision/digest, independent of Space membership and provider Skill
-IDs. Runtime preparation, fresh provider submission and registry tool dispatch
-revalidate accepted references; a changed pin requires a fresh preparation, not
-an automatic upgrade to different instructions. Unavailable inventory preserves
-existing managed files but blocks fresh shell/delegated execution. Confirmed
-empty inventory removes managed mirrors. Retained provider operations continue
-receipt/observation recovery without replaying a prompt after access changes.
-Public standalone transition remains gated on discovery, citation, authoring
-and Desktop sync consumers preserving this identity; private SQL installation
-alone is not a supported user transition.
-
-Standalone native content uses `notis skills read <skill-id> --files` and
-`notis skills update ./skill-edit.json --request-id <stable-key> --dry-run`, then
-the identical update without `--dry-run`. This direct route uses the existing
-`notis:read`/`notis:write` OAuth scopes, not Space membership. The edit contains
-the returned `{skill_id,access_revision}` target, exact content version and
-Markdown or complete files; it cannot retarget an included Space binding.
-The Portal editor uses the same versioned writer and retains its request key
-after an ambiguous response until canonical readback succeeds. A new-Skill editor
-keeps its creation mode/body/key pinned through navigation, locks further content
-changes while the outcome is uncertain, and offers **Finish creating**. A flag
-change cannot turn that retry into legacy creation. Unsupported
-legacy lifecycle/sync/share actions are not native fallbacks.
-
-Agent Skill creation uses a stable `request_id` and an optional explicit
-`destination`. Definition updates use `native_content:{target,version,request_id}`;
-personal enablement/agent assignments retain the separate
-`native_context:{access_revision,settings_revision,request_id}` contract. These
-cannot be mixed. Included pre-native content can have revision zero; direct native
-heads start at one. Shared destinations/targets require `notis:spaces` in addition
-to ordinary external write permission, including inside batched tool calls.
-Unknown creation rollout state is not permission to fall back to a provider write.
-
-For native agent `bundle_url` input, a real apply first validates and admits an
-exact private file snapshot. Retries check current authority and reuse those bytes
-without redownloading an expired URL. A dry-run alone does not persist that snapshot;
-it is not a promise that mutable URL contents stay unchanged until apply.
-
-Native agent create/update reviews are private, best-effort reports of the exact
-committed intent's before/after files. A separate journal pins one report identity,
-renderer candidate and verified immutable objects; uncertain replies do not create
-another Skill edit or report. Revoked source authority and trashed/replaced reports
-fail closed on replay without recreating the report. Review failure never rolls
-back the content commit. Manual Portal edits, background sync and personal-settings
-changes do not generate these reports. This is not Store publication or approval.
-The current presentation is an independent private Space, with a source-backed published revision and only the
-actor's initial Editor anchor. `native_skill_review_intents.document_id`, original candidate/state and old committed
-result remain historical identity; `skill_review_space_receipts` adds the current `space_id`, source and exact-byte
-object receipts. New reviews never insert standalone documents. The projection converts only the frozen module
-export/authoring index, preserving the captured payload, original config and all source files; old staged objects
-are read back by hash when a newer renderer cannot reproduce them. The final Space publication uses canonical
-source RPCs after all bytes are verified. Current native Skill authority and exact private review source are checked
-on every replay; an edited, trashed or deleted review is not silently returned or recreated.
-
-Legacy Skill share-link creation uses the same durable effect claim before
-reading source or returning a creation retry. A migrated/native Skill cannot
-export its retained legacy body through that endpoint. Existing independent
-snapshot links are not retroactively erased. Uncertain inserts recover only the
-exact attempted token (or an acknowledged unique-key winner); they do not repeat
-the insert or release an unresolved claim.
-
-Selected Space Skills provision supporting files through
-`LOCAL_NOTIS_RUN_SANDBOX_SHELL` in the native Notis Cloud Computer's run-scoped
-directory. Composio workbenches and Desktop are separate execution environments;
-the same-looking filesystem path does not transfer files or authorization to
-them. An included Skill grants neither provider credentials nor broader data
-access. Its current reference is revalidated before fresh execution.
-
-Protected Spaces navigation uses the view-qualified links described above; a
-record is named by its native record key in the last path segment. The record
-key is not a provider/external row ID. Deep links still resolve current access, including when a Space was
-shared directly beneath a private record. `/spaces/preview` remains a distinct
-authenticated preview route. Source uses `useNotisNavigation().toSpace(spaceId,
-{ recordKey })`; the host accepts exact identities, not arbitrary URLs or link
-credentials. Portable sources declare `navigation: { history: { key: 'history' } }`
-in their Space definition and call `await nav.toNamedSpace('history')`. Bind the
-instance destination using `notis spaces navigation bind <source-id> --alias
-history --target '{"space_id":"<destination-id>"}' --revision <metadata-revision>`.
-This edits the next release's bindings, not the live published snapshot. Build,
-verify and publish the source to activate it. Bindings are not grants: both source
-and destination require current viewer access on every click, including link and
-preview context. A fixed record target cannot be overridden into another record
-or a whole Space. Removing or changing a draft reference does not redirect old
-published source; revoked/deleted destinations become unavailable.
-
-The optional `selection` in `toNamedSpace(alias, { selection })` roundtrips through
-the URL and `useNotis().selection` (a `specVersion: 2` view declares `selection` as an
-ordinary param and reads it with `useViewParams()`; other declared params ride in the
-same query string). It is untrusted UI state, never substituted for
-the `record` authorization context, sent as action authority, or used to mount a
-second copy of the same Space. The selected source archive keeps portable keys
-without including a destination's source. Store packaging must map those keys to
-independent installed destinations and reject unresolved external references.
-
-Navigation and native record controls do not imply
-Store installation, complete account conversion, or permission to release the
-platform; those retain their separate acceptance gates.
-
-Registry publication stamps the runtime manifest with the numeric Store release sequence
-and the package `app.release_version`. Earlier Store installs may lack the private-deployment
-`manifest.version`; runtime access recognizes their persisted Store
-installation receipt only when the running bundle matches the installed baseline. This
-compatibility does not activate unreleased private containers or replacement bundle URLs.
-App list/detail expose this decision as `runtime_version` for Workspace visibility; it
-does not change `current_version` or the private deployment optimistic-lock base.
-Runtime route resolution honors explicit `export_name`, current CLI path exports, and the
-deterministic underscore-prefixed path exports in existing registry bundles. Multi-route
-bundles must resolve a route-specific export; arbitrary minified-export guessing is rejected.
-
-### Legacy App Skill paths removed (R9)
-
-Apps no longer package, associate, clone or manage Skills. `notis.config.ts` rejects `skills` and
-`onboarding` (the CLI and the release endpoint both answer `app_skills_moved_to_spaces` before any
-claim or upload); put each Skill in `skills/<alias>/` of a Space source instead. Every former App
-Skill was converted to a native Skill with the same ID and linked to its migrated Spaces. Store
-installs, duplicates, pending-asset activation and Store updates copy automations only, App detail
-has no `bundled_skills`, and the App list has no `skills` count. The `skills.owner_app_id` and
-`apps.bundled_skill_ids` columns remain as unread legacy data until the deployed-consumer gate
-allows schema contraction; `legacy_skill_rows` stays the single boundary reader.
-
-## Editing an Existing App
-
-### With Notis or a coding agent
-
-Use **Update app** from App Details. Pull the current release into the intended directory, preserve
-local edits and its exact profile/app link, then follow [release-only delivery](#release-only-delivery).
-No runtime preview is mounted in Workspace. Source edits do not affect the installed app until release.
-For historical-source restoration, use the current deployment base and release the old source as a
-new version; do not roll back database contents or external actions.
-
-### Resetting a store-installed app
-
-Store-installed apps can be reset from the app detail page or through the `reset_app_customizations` app tool. Reset restores app metadata, routes, tools, and update state to the latest published store listing. Database rows and documents are not deleted.
-
-By default, reset preserves the installed app's current database definitions so user-added fields remain available. Users can explicitly choose **Restore database schema** to replace database schemas with the latest store schemas. Even with schema restore enabled, existing documents remain in place.
-
-Creation retries keep a profile/name/slug/scope-bound idempotency intent until the exact editable app is reconciled. Only a typed `AppCreateRejected` validation, raised before insertion and returned as `outcome: rejected`, clears a rejected intent so a corrected request can use a new key. Transport failures, insertion errors, post-create resource failures and incomplete readback retain the key; they do not prove that creation was rolled back.
-
-### Forking an existing app
-
-Any user can fork a **published Store app** by downloading its source from the public registry with `notis apps init --from <slug>` — installing it first is not required. This scaffold is unlinked and becomes the basis for a new app identity.
-
-```bash
-# Fork a published Store app straight from the registry (no install needed):
-notis apps init "My Fork" ./my-fork --from <slug>
-cd my-fork
-# ...edit notis.config.ts, app/, components/, metadata/...
-npm install
-notis apps build
-notis apps verify
-notis apps create "My Fork" .           # creates a new remote app, links this directory
-notis apps deploy
-# After the owner confirms App Details is ready for Store review:
-notis apps publish --confirm-ready
-```
-
-`apps pull <app-id> ./existing-app` is the **update** workflow, not the new-identity fork workflow. It downloads the exact deployed source and writes the profile-scoped `.notis/state.json` link to that same app and deployment base. Subsequent deployment updates that copy. The CLI only pulls source from apps you own or can access as installed copies. To obtain source for a published Store app you have not installed, use the registry path (`notis apps init --from <slug>`) instead.
-
-Team-scoped access: anyone on the team can install and edit team-published apps. No one outside the team sees them. Public-published apps are installable by anyone with a Notis account.
-
-What happens to relationships when you fork:
-
-- The `apps init --from` scaffold has no remote app link until you run `notis apps create` or `notis apps link`. Scaffolding alone does not affect any apps.
-- When you `create` + `deploy` + Publish the fork, it becomes a new listing with its own slug and lifecycle.
-- If you previously edited the *installed copy*'s source and published it as a derivative, the backend clears `apps.source_listing_id` on the published copy after the new submission opens. Your installed copy stops auto-updating from the original publisher; it now lives under the new listing it just became.
-- Other people's installs of the original listing are untouched. They keep their upstream link to the *original* publisher and continue to receive updates from the *original* listing.
-
-### What you can change
-
-| Change | Where to edit |
-|--------|--------------|
-| App name, description, icon | `notis.config.ts` metadata |
-| Add/modify database refs | `notis.config.ts` databases array |
-| Add/modify routes | `notis.config.ts` routes array |
-| Change tool access | `notis.config.ts` tools array |
-| Modify UI/pages | `app/` directory |
-| Add components | `components/` directory |
-| Update metadata only | Portal UI or `update_app` tool |
-| Ship a Skill or a Set up action | A Space source: `skills/<alias>/SKILL.md` and a view button calling `handover({ skill })` |
-| Bundle unrelated automations by reference | Portal UI or `update_app` tool |
-
-### Database schema changes
-
-`notis.config.ts` does not define database schema. Create or evolve databases through native Notis database tools, then reference the resulting slugs from the app config. The runtime resolves the real database rows when the app loads. An app-owned database slug is part of the deployed contract: bundles and collection routes may refer to it directly, so schema tools reject changing that slug. Rename the database's display title instead; changing a slug requires a new app package and an explicit migration strategy.
-
----
-
-## Publishing to the Public App Store
-
-`notis apps deploy` updates a single linked installed app — it's a private operation between the developer and their own account. Store submission is a separate action. The owner can click Publish/Update in App Details, or an agent can run `notis apps publish --confirm-ready` after the user explicitly confirms that the current App Details page is ready. Both surfaces call the same authenticated endpoint and submit the deployed manifest, not un-deployed local files.
-
-### App Details publish flow
-
-1. **Pick visibility.** On the App Details page (`/apps/[appId]`), the owner picks **Personal**, **Team**, or **Public** in the visibility selector. Personal hides the publish CTA — the app is private to the owner. Visibility persists on the `apps` row.
-2. **Submit the confirmed listing.** With Team or Public selected, the owner clicks **Publish/Update**, or an agent with explicit approval runs `notis apps publish --confirm-ready`. The CLI checks local listing readiness, confirms `.notis/state.json` matches the current deployed version, blocks duplicate pending reviews, and then sends only `{ app_id }` to `/portal_apps/publish`. The server reads `apps.visibility` and listing metadata from the deployed `manifest.json` (`title`, `tagline`, `categories`, screenshots from `metadata/`, and parsed entries from the root `CHANGELOG.md`). The async publish handler offloads synchronous source uploads and GitHub work to a worker thread, then awaits the same submission result; publication must not block unrelated runtime or sidebar requests.
-3. **Publish behavior depends on visibility:**
-   - **Team** (`visibility='team'`): instant. Server upserts an `app_store_listings` row with `channel='team'`, `review_status='published'`, and the manifest metadata. Anyone on the team can install it from the Team section of `/store` immediately.
-   - **Public** (`visibility='public_store_hidden'`): server opens a PR on `mindtheflo/notis-apps`, assembling the complete editable `apps/<slug>/` source tree plus `notis-listing.json` and Store screenshots. The listing metadata carries a reviewable install snapshot: the exact schema of every source-declared database, only rows from databases with `seedDocuments: true`, and bundled app resources. Registry CI validates source, schemas, seed privacy budgets, screenshot dimensions/size/alt text, type safety, bundle size, and forbidden patterns. On merge it builds the bundle, signs an HMAC payload containing that install snapshot, and POSTs to `/registry_publish`; the handler upserts a fully installable public `app_store_listings` row.
-4. **Update presses do the same thing.** The button reads **Update** instead of **Publish** when an active submission already exists. Same channel rules: Team is instant, Public goes through PR review. The submission row in `app_submissions` tracks PR state.
-   **What’s New** is the first entry in the latest published `CHANGELOG.md`; **Version History** renders every entry from that same file. Because the latest file is authoritative, editing an older entry and publishing again updates that past Store entry instead of leaving an immutable database copy behind.
-5. **Visibility is locked while a listing is live.** Once an active submission exists (pending review or merged), the visibility selector is disabled. The owner must Unpublish before flipping between Team and Public.
-6. **Conflict resolution lives at install time, not publish time.** When a Team or Public listing updates, propagation applies the new snapshot automatically to clean installs and compatible customization overlays. Installs with conflicting customizations move to `needs_resolution` and surface the App Details resolution flow through `/portal_apps/update/resolve`; `/portal_apps/update/apply` remains the explicit clean-apply endpoint. The publisher is not asked to resolve installers' conflicts.
-
-Database compensation during a Store update must fence on the actual write response, because database triggers may replace the requested timestamp.
-
-If an installed Public store app is **modified and republished as a new app** (a fork), the backend clears `apps.source_listing_id` on the developer's installed copy after the new submission opens. That copy stops receiving upstream update notifications and owns its new lifecycle. The original listing keeps updating its other installs untouched. See [Forking an existing app](#forking-an-existing-app-1).
-
-### Unpublish
-
-The App Details ⋯ menu offers **Unpublish** when there's an active submission:
-
-- **Pending review**: Unpublish withdraws the submission immediately (`/portal_apps/submissions/withdraw`). Already-installed copies are unaffected (there were none yet).
-- **Team listing** (`channel='team'`, `review_status='published'`): Unpublish flips the row to `archived` (or deletes it). Anyone who already installed the team app keeps using it; new installers from the team Store no longer see it.
-- **Merged Public listing**: Unpublish opens a *removal PR* on `mindtheflo/notis-apps` deleting `apps/<slug>/`. The listing **stays live in `/store` until the PR merges** — App Details shows a "Removal pending review" badge while the PR is open. On PR merge, registry CI removes the listing (the same handler that adds it on publish — extended to handle deletes). On PR close-without-merge, the badge clears, no DB change, the listing remains live. This mirrors how Raycast handles extension removals.
-
-Already-installed copies of an unpublished app keep working until users uninstall them — un-listing affects discovery and new installs only.
-
-### Screenshot framing
-
-`notis apps screenshot` measures the rendered app rather than assuming it fills
-the viewport. For a centred, width-constrained app, the capture follows layout
-wrappers only when they contain the entire visible app. Separate headers and
-split panes stay together; a single card or column is never chosen from a larger
-layout. Short bounded views are captured at their final display resolution and
-fitted in full. Long narrow pages use a width-fitted desktop viewport, showing
-the first screen instead of shrinking the whole document into a miniature.
-The compositor preserves the capture's aspect ratio without further cropping.
-The final PNG remains 2000×1250. Explicit focus selectors take precedence;
-`--raw` retains the viewport capture without automatic content framing.
-
-Keep generated design previews outside the Portal source tree (for example in
-gitignored `.context/`). The Store gallery reads listing media, not local fixture
-PNG paths.
-
-### Why publishing requires explicit confirmation
-
-Listing media (screenshots, tagline, category) lives in `notis.config.ts` and `metadata/` because it travels with the source. Store submission is outward-facing and remains separately user-gated: deploy approval is not Store approval. `apps publish --confirm-ready` exists so an agent can complete the confirmed workflow without bypassing App Details safeguards; it rejects missing confirmation, incomplete listing media, a local/deployed version mismatch, private visibility, and existing pending review.
-
-Every app package must declare a semver `notisAppVersion`. The first publication can start at `0.1.0`; every later Store update must increment it beyond the version already on the registry's `main` branch. This release version is separate from the installed app's auto-incrementing deployed source version.
-
-### Difference from `notis apps deploy`
-
-| | `notis apps deploy` | App Details or `notis apps publish --confirm-ready` |
-|---|---|---|
-| Audience | Just you / your team | Everyone in the App Store, by channel |
-| Surface | CLI | Portal `/apps/[appId]` or CLI after explicit confirmation |
-| Mechanism | Uploads bundle and source snapshot to `app-code` / `app-source` and updates the linked `apps` row | Reads the deployed source, manifest, exact database schemas, and opt-in starter rows; Team writes directly to `app_store_listings`, while Public opens a full-source registry PR |
-| Manifest media required | No | Yes — backend requires a tagline, category, and at least three valid 2000×1250 PNG screenshots with descriptive alt text |
-| Versioning | Auto-incrementing integer on the installed app | `app_submissions` row tied to the deployed source version |
-
-### Source portability
-
-Every deploy writes the editable source snapshot and listing media to `app-source/{app_id}/v{version}/`. Anyone with access to an installed app can pull source from a terminal:
-
-```bash
-notis apps pull <app-id> [dir]
-```
-
-Pulled source includes the same files that were deployed for that installed app version: app code, `notis.config.ts`, and `metadata/` listing assets. See [Forking an existing app](#forking-an-existing-app-1).
-Current CLI deploys also persist lockfiles so pulled checkouts can reproduce the original install. Older apps that predate source snapshots must be redeployed once before `notis apps pull` can recreate an editable checkout.
-
-The release manifest declares `source_storage_format: tar-gzip-v1` for binary source snapshots.
-A private `.notis/source-snapshot.json` descriptor in the source bucket owns the format and
-archive digest, so source remains readable after old runtime bundles are pruned. These snapshots
-store every original source file, including tests and lockfiles,
-inside `source.tar.gz`; `metadata/` files also remain directly accessible at their original
-paths for signed listing-media URLs. This avoids raw source triggering storage-edge injection
-filters without rewriting or excluding code. Pull and Store submission decode the archive
-losslessly; snapshots without this descriptor retain the legacy per-file reader. Unknown formats,
-corrupt archives, duplicate/unsafe members, and snapshots exceeding 10,000 files or 256 MiB
-of decoded source fail closed. Deployment claims journal the descriptor, archive and media object paths,
-not the member paths, so failed-release cleanup removes the exact staged objects.
-
-**Reader rollout:** the archive reader must be deployed to every API/worker environment that
-can pull or submit an app before archive-format releases are created there. Older platform
-builds cannot read the new source format; this is a platform release dependency, not an app
-deployment or database migration. Existing snapshots are never rewritten.
-
-App-owned source can be edited in a gitignored worktree directory such as
-`.context/`; deployment versions its source independently of this repository.
-Do not maintain a second `app-changes/` snapshot solely to version an installed
-app. Preserve the app's CLI linkage and build/verification workflow. Changes to
-the Notis platform itself still belong in Git and follow the repository release policy.
-
-#### Space-linked Skill source and materializations
+A converted root has no App details page any more: a bare `/apps/<installed-app-id>`
+link opens the converted Space like any other old App link. **Uninstall app** on a
+converted root uses the normal Space Bin confirmation and revision-checked subtree
+lifecycle, with its existing restoration window.
+
+## The Space Store
+
+`notis spaces deploy` updates one existing Space and never publishes to the Store. Store
+publication is a separate, explicitly approved action: Publish to Store from a Space's
+sidebar menu, or `notis spaces store publish`, which publishes a Space and its sub-Spaces
+as the next version of its listing. `notis spaces store install` installs a listing as
+the person's own independent copy, `notis spaces store update` updates an installed copy
+while keeping the person's changes (or resolves its conflicts), and
+`notis spaces store unpublish` stops new installs. The Store is gated by `spaces_store`
+(see [Core Platform Model](#core-platform-model)).
+
+### Space-linked Skill source and materializations
 
 A Skill a Space uses has one editable definition: the native Skill itself,
 linked to the Space under an alias. `notis spaces pull` writes its complete
@@ -2108,155 +1450,23 @@ agent harness to receive its generated copy.
 
 ---
 
-## App Contract
-
-Every Notis App is defined by three things working together:
-
-### 1. Source project
-
-A standard Vite + React project with UI, routes, and components.
-
-### 2. `notis.config.ts`
-
-This is the declarative app contract. It defines:
-- app metadata (name, description, icon)
-- **listing metadata + media** as top-level manifest fields (`title`, `tagline`, `categories`) plus the `metadata/` folder and root `CHANGELOG.md`
-- routes shown in the portal
-- referenced databases by slug
-- tool access allowed at runtime
-
-It declares no Skills and no onboarding entrypoint: those belong to Space
-sources (`skills/<alias>/` and a view button calling `handover({ skill })`).
-
-#### Listing metadata + media
-
-Everything the App Store needs to render a listing lives in `notis.config.ts`, `metadata/` for image assets, and a root `CHANGELOG.md` for editable release history, so it travels with the source. The schema mirrors how Raycast extensions describe themselves — short, flat metadata plus conventional source files:
-
-```typescript
-defineNotisApp({
-  // Identity
-  name: 'random-number-generator',           // URL slug — short, lowercase, hyphenated
-  title: 'Random Number Generator',          // display title shown across the Store and Portal
-  description: 'Generate random numbers with configurable bounds, and keep a history of everything you rolled.',
-  icon: 'phosphor:dice-five',                      // a `phosphor:*` value or `metadata/icon.png`; falls back to two-letter initials
-  accent: 'amber',                                 // optional avatar color (blue|violet|emerald|amber|rose|sky|fuchsia|teal); default derived from id
-  author: { name: 'Florian Pariset', handle: 'florian' },
-
-  // Listing
-  tagline: 'Roll dice, keep history.',       // single-line pitch shown on Store cards
-  categories: ['Personal'],                  // 1+ values from the AppCategory enum
-  screenshots: [
-    {
-      path: 'metadata/screenshot-1.png',
-      alt: 'Preset editor with minimum and maximum number fields',
-      route: 'generator',                    // optional route slug used by screenshot capture
-      scenario: 'preset-editor',             // optional fixture scenario for a truthful demo state
-      focus: '[data-preset-editor]',          // optional selector for a truthful detail crop
-      theme: 'dark',                          // optional light | dark; defaults to light
-    },
-  ],
-
-  // Structure
-  databases: [...],
-  routes: [...],
-  tools: [...],
-})
-```
-
-Image assets live in a `metadata/` folder at the project root, with these conventional filenames:
-
-- `metadata/screenshot-1.png` … `metadata/screenshot-6.png` — product screenshots (exactly 2000×1250 PNG, ≤2 MB each, 3–6 required for publishing). Generate these with `notis apps screenshot` rather than authoring them by hand.
-- `metadata/icon.png` — optional raster icon when `icon: 'metadata/icon.png'` is used instead of a `phosphor:*` value.
-
-There is no cover image. Apps are icon-led like Raycast: the `icon` in `notis.config.ts` represents the app across the Store grid, the listing detail header, and App Details. The listing detail page leads with the icon + name + tagline and a screenshot gallery.
-
-Declare `screenshots` in `notis.config.ts` to give every image descriptive alt text and a stable editorial order. Optional `route` and `scenario` fields let one route produce multiple truthful states during `notis apps screenshot`; scenario data comes from the local screenshot fixture and never replaces live app data. An optional `focus` CSS selector captures a real element when a screenshot should spotlight one part of the UI and avoids empty browser canvas around narrow layouts. Set `theme` to `light` or `dark` to capture against the matching Portal color scheme; paired light/dark entries can reuse the same route and scenario.
-
-The screenshot command opens the real app route in the headless browser harness, applies the configured fixture `scenario` and Portal `theme`, waits for the route to settle, and captures either the configured `focus` element or the app surface. The compositor resizes that truthful capture into a large 16:10 rounded window over the shared Store background, adds only a thin theme-aware edge, and writes a true-color 2000×1250 PNG. It does not redraw the app or add a synthetic shadow. Use `--raw` for a diagnostic capture without the Store frame. Bundled assets ride along with the source upload (no separate bucket): `notis apps deploy` writes them into `app-source/{app_id}/v{version}/metadata/` together with the rest of the source, and the deployed `manifest.json` records the upload paths so the portal can sign URLs through the existing source-bucket flow.
-
-#### Release history
-
-Release history lives in one root file, newest entry first:
-
-```markdown
-# Random Number Generator Changelog
-
-## [Saved Presets] - {PR_MERGE_DATE}
-
-- Added reusable minimum and maximum presets.
-
-## [Initial Release] - 2026-07-01
-
-- Generate random numbers and keep a roll history.
-```
-
-Use `## [Release title] - YYYY-MM-DD`; `{PR_MERGE_DATE}` is also accepted for the newest unpublished entry. The build parses the complete file into the deployed manifest. The first entry powers **What’s New**, and the complete ordered list powers **Version History**.
-
-The `categories` array accepts one or more values from the `AppCategory` enum exported by `@notis/sdk/config`:
-
-- `Productivity`
-- `Sales & Marketing`
-- `Operations`
-- `Product & Engineering`
-- `Personal`
-
-The Store filters listings by these categories and the App Details listing block displays them as chips.
-
-`notis apps verify` reports, as `Store readiness:` warnings, and `notis apps verify --listing` / `notis apps publish` enforce:
-- Required listing fields (`title`, `description`, `tagline`, `categories[≥1]`) when the manifest is otherwise complete.
-- A valid root `CHANGELOG.md` with at least one Raycast-style release entry.
-- Three to six screenshots, exact 2000×1250 PNG dimensions, max size (≤2 MB per screenshot), and descriptive alt text for every image.
-- Asset paths stay inside the project root.
-
-`notis apps verify` always enforces, whatever the listing state:
-- Every route mounts in the headless harness without render errors.
-- Runtime database queries stay inside the app's declared database references, and collection routes actually query their configured collection database. A database may still be packaged for automations or agent workflows without every UI route reading it.
-- In `--mode live` only: a route whose runtime calls all failed, or a declared database whose queries never succeeded, fails the route. An app that catches every failed call and renders its error state mounts cleanly, so nothing else would catch it.
-
-The CLI reports these checks during development, App Details shows the same readiness checklist, and the backend enforces them again on Publish. Apps without listing metadata still **deploy and run normally**, but the Publish action remains disabled until the deployed manifest is complete.
-
-### 3. Generated manifest
-
-`notis apps build` generates `.notis/output/manifest.json`, which is the packaged runtime description used by the platform.
-
-The manifest includes:
-- app identity (name, title, description, icon, author)
-- listing metadata (tagline, categories, parsed `CHANGELOG.md` entries)
-- discovered media paths (screenshots from `metadata/`) — populated at build time and rewritten with deployed asset URLs at upload time
-- routes
-- database slug references
-- tool allowlist
-- bundle paths and per-route export names
-
-The manifest `author` describes the app package, but it does not control the
-Store's visible publisher. Public and team listings are attributed to the Notis
-account that publishes them: the listing owner's `users.first_name` is displayed,
-and the corresponding `user_id` is returned as `metrics.publisher.id`. This keeps
-publisher identity tied to the authenticated account rather than mutable app
-source metadata.
-
----
-
 ## Main Components
 
 ### `@notis/sdk`
 
-`packages/sdk/` is the single SDK package for app developers.
+`packages/sdk/` is the single SDK package for Space view authors.
 
 The package is mirrored automatically to the public
 [`mindtheflo/notis-sdk`](https://github.com/mindtheflo/notis-sdk) repository by
-`.depot/workflows/sync-public-repositories.yml` after relevant changes reach
-`beta`. The monorepo remains the source of truth; public mirror files are
-generated and must not be maintained separately. The same workflow mirrors the
-CLI to `mindtheflo/notis-cli`. The independent `mindtheflo/notis-apps` registry
-keeps its own PR-validation and merge-publish workflows because its app entries
-are the public contribution surface rather than a monorepo mirror.
+`.depot/workflows/sync-public-repositories.yml` after relevant changes reach `beta`. The
+monorepo remains the source of truth; public mirror files are generated and must not be
+maintained separately. The same workflow mirrors the CLI to `mindtheflo/notis-cli`.
 
 It provides:
-- `@notis/sdk` for `NotisProvider` and runtime hooks
-- `@notis/sdk/config` for `defineNotisApp()`
+- `@notis/sdk` for `NotisProvider`, runtime hooks and record components
+- `@notis/sdk/config` for `defineSpaces()` and `defineSpace()`
 - `@notis/sdk/vite` for `notisViteConfig()`
-- `@notis/sdk/styles.css` for shadow-safe app shell styles and base app-surface classes
+- `@notis/sdk/styles.css` for shadow-safe shell styles and base surface classes
 
 Important hooks include:
 - `useTool`
@@ -2269,56 +1479,42 @@ Important hooks include:
 
 ### CLI
 
-The CLI requires Node.js 22.12.0 or newer; Node 24 LTS is recommended.
-This floor follows Commander 15 and also covers the app builder dependencies.
-Both installation and the public entry point reject older runtimes before
-loading CLI dependencies, even when npm engine warnings are not enforced.
-Install lifecycle scripts can be disabled, but the runtime check still applies.
-See the generated [CLI setup reference](../packages/cli/README.md#install).
+The CLI requires Node.js 22.12.0 or newer; Node 24 LTS is recommended. This floor follows
+Commander 15 and also covers the Space build dependencies. Both installation and the
+public entry point reject older runtimes before loading CLI dependencies, even when npm
+engine warnings are not enforced. Install lifecycle scripts can be disabled, but the
+runtime check still applies. See the generated
+[CLI setup reference](../packages/cli/README.md#install).
 
-The repo-local Notis CLI is the supported interface for app work in a normal repo workspace, primarily in:
-- `packages/cli/src/command-specs/apps.js`
-- `packages/cli/src/runtime/app-platform.js`
-
-Canonical commands:
-- `notis apps init`
-- `notis apps build`
-- `notis apps verify`
-- `notis apps create`
-- `notis apps deploy`
-- `notis apps link`
-- `notis apps pull`
-- `notis apps doctor`
-- `notis apps list`
+The `notis spaces` command group is specified in
+`packages/cli/src/command-specs/spaces.js`; see [CLI Command Reference](#cli-command-reference).
 
 ### Python backend
 
-The Python backend is the source of truth for installed apps, artifact serving, runtime enforcement, and database/tool proxying.
-
-Important surfaces:
-- `/cli_tools` for CLI-triggered app operations
-- `/portal_apps` for app CRUD, visibility, App Store publishing, unpublishing, and submission metadata
-- `/portal_views/get` for view details and signed bundle URLs
-- `/portal_views/runtime_query` for database and tool proxying
-- `/registry_publish` for the signed registry CI webhook that publishes merged App Store submissions
+The Python backend is the source of truth for Spaces, their source revisions, artifact
+serving, runtime enforcement, and database and tool access. Its HTTP surface is
+`server/routers/portal_spaces/_1_code/entry.py` (`/portal_spaces/*`), with the behavior in
+`server/lib/space_*.py`.
 
 ### Portal
 
-The Portal renders installed apps as React components directly in its React tree. The main renderer lives under `portal/src/components/apps/`.
+The Portal renders Space views as React components directly in its React tree. The
+renderer lives in `portal/src/components/apps/AppViewRenderer.tsx` (a historical name; it
+renders Spaces only) and `portal/src/components/spaces/`.
 
 The portal is responsible for:
-- loading app navigation and route metadata
-- dynamically importing the app bundle and rendering the correct route component
+- loading Space navigation and presentation metadata
+- dynamically importing the view bundle and rendering the correct component
 - supplying the host theme
-- keeping app execution isolated from the main portal runtime
+- keeping view execution isolated from the main portal runtime
 
 ---
 
 ## Runtime Bridge
 
-Apps do not talk directly to privileged backend internals. The portal owns the runtime and injects it into the rendered app subtree with `NotisProvider runtime={runtime}`.
+Space views do not talk directly to privileged backend internals. The portal owns the runtime (`portal/src/lib/spaceRuntimeBridge.ts`) and injects it into the rendered view subtree with `NotisProvider runtime={runtime}`.
 
-The supported contract is the runtime object exposed through the SDK hooks. Apps must not read globals such as `window.__NOTIS_RUNTIME__`.
+The supported contract is the runtime object exposed through the SDK hooks. Views must not read globals such as `window.__NOTIS_RUNTIME__`.
 
 The runtime provides capabilities like:
 - `listTools()`
@@ -2330,8 +1526,8 @@ The runtime provides capabilities like:
 - `cloudComputerFacts()` — read-only cloud computer facts behind the `cloudComputer: 'read'` capability; it never creates, resumes or commands a sandbox
 
 Two runtime modes matter:
-- **Temporary test harness**: explicitly invoked local stub/live verification, separate from Workspace.
-- **Portal runtime**: the installed or deployed bundle backed by `/portal_views/runtime_query`
+- **Offline verification**: `notis spaces verify` renders the frozen build with offline fixtures, separate from Workspace.
+- **Portal runtime**: the published bundle backed by the `/portal_spaces` endpoints
 
 The bridge is HTTP-based for data operations. Cross-surface coordination hooks are only for narrow UI concerns such as resize or navigation, not for primary data access.
 
@@ -2341,110 +1537,26 @@ You should use the SDK hooks rather than calling the runtime bridge directly. Th
 
 ## Data Model
 
-The main persistence model is:
+- `databases`: schema lives on the database row. Every database is linked to at least one
+  Space and has one main view.
+- `documents`: records stored inside databases; `database_id` links to databases with
+  `ON DELETE CASCADE`.
+- Space membership, links, source revisions, Sites, the bin and the Store are owned by the
+  `server/lib/space_*.py` services and described in the Space sections of this document.
 
-- `apps`
-  - the installed app record
-  - stores app metadata, manifest, version, ownership, visibility, bundled asset references, and store-update state
-- `databases`
-  - every row belongs to one app through `owner_app_id`; manifests reference
-    that app's rows by slug
-- `documents`
-  - records stored inside databases
-- `app_store_listings`
-  - versioned snapshots for store publishing and installation flows
-- `app_submissions`
-  - Portal App Store submissions, GitHub PR metadata, listing screenshots, and review status
-- `app_store_listing_versions`
-  - legacy release-history fallback for listings published before source-controlled `CHANGELOG.md`; new history is read from the latest published file
-- `app_store_ratings`
-  - one 1–5 rating and optional written review per user and Store listing; browser access stays behind authenticated server endpoints
-- Supabase Storage `app-code`
-  - stores deploy artifacts at `{app_id}/v{version}/`
-- Supabase Storage `app-source`
-  - stores editable source snapshots at `{app_id}/v{version}/`
-- Supabase Storage `app-listing-assets`
-  - legacy upload bucket for pre-manifest listing screenshots; current manifest listing media rides in `app-source/metadata/`
+Generated database upsert tools are qualified by the immutable database ID, not only by
+slug. This prevents two accessible databases with the same display slug from resolving
+to the wrong executor. Runtime reads and mutations resolve the database ID first and
+reject a document operation bound to a different database tool.
 
-### apps table
-
-| Column | Type | Description |
-|---|---|---|
-| id | uuid PK | App ID |
-| user_id | uuid FK | Owner |
-| team_id | uuid FK | Team (nullable) |
-| name | text | Display name |
-| slug | text UNIQUE | URL slug |
-| description | text | App description |
-| icon | text | Phosphor icon (e.g. "phosphor:list") |
-| status | text | draft, active, archived |
-| visibility | text | private, team, public_store_hidden |
-| manifest | jsonb | Latest deployed manifest |
-| current_version | integer | Version counter |
-| source_listing_id | uuid FK | Source App Store listing for installed store apps; cleared when submitted as a derivative |
-| installed_listing_version | text | Human listing version installed from the store |
-| installed_listing_store_version | integer | Numeric store listing version installed from the store |
-| installed_snapshot | jsonb | Store-installed baseline used for update/reset comparison |
-| customization_overlay | jsonb | User changes over the installed store baseline |
-| update_status | text | up_to_date, update_available, needs_resolution, update_failed |
-| pending_listing_version | text | Pending human listing version when an update is available |
-| pending_listing_store_version | integer | Pending numeric store listing version |
-| pending_update_conflict | jsonb | Conflict details for Notis-assisted update resolution |
-| bundled_automation_ids | uuid[] | Linked automations |
-| bundled_skill_ids | uuid[] | Legacy, unread since R9 (Skills are linked to Spaces) |
-
-### Related tables
-
-- **databases** -- Schema lives on the database row. `owner_app_id` is the
-  lifecycle and authorization owner; `user_id` remains creator/actor
-  provenance. Slugs are unique within an app, user, and team namespace.
-- **documents** -- `database_id` links to databases with `ON DELETE CASCADE`.
-  `user_id` records the actor that created or last owns the document; access is
-  inherited from the database's owner app rather than granted by provenance.
-- **app_store_listings** -- Snapshots for publishing to the app store.
-- **app_submissions** -- Portal review submissions keyed to an app source version and registry slug.
-
-Generated database upsert tools are qualified by the immutable database ID,
-not only by slug. This prevents two accessible databases with the same display
-slug from resolving to the wrong executor. Runtime reads and mutations resolve
-the database ID first and reject a document operation bound to a different
-database tool.
-
-Important implication: the app owns the database lifecycle, but its manifest
-does not define database schema. Agents should create or update databases
-through native database tools, then wire those slugs into app configuration.
-
-### Ownership migration rollout
-
-Roll out database ownership in this order:
-
-1. Apply `migration/20260721_databases_app_ownership.sql`. This additive
-   migration takes write-blocking locks while it atomically removes orphan
-   documents, installs the cascading foreign keys, and leaves
-   `owner_app_id` nullable for the old runtime. It also installs the atomic
-   account-deletion transfer helpers and fences app/database/document writes
-   for identities with an active account-deletion job; deploy this migration
-   before the server runtime that calls those helpers.
-2. Deploy the server version that stamps and enforces `owner_app_id` on every
-   create, install, update, runtime, and deletion path.
-3. Quiesce database/app writes, then run
-   `server/utilities/enforce_database_app_ownership.py --backfill --quiescent`,
-   audit the remaining rows, and run
-   `server/utilities/enforce_database_app_ownership.py --purge --quiescent`
-   only when the operator has explicitly authorized deletion. Each purge is
-   revalidated atomically against the current row and app manifests before it
-   can remove the database. Until each user's rows have valid owners, account
-   deletion fails closed for that user rather than deleting unresolved data.
-4. Apply `migration/20260722_databases_owner_app_id_not_null.sql` only when the
-   audit reports no null/dangling owners, team mismatches, or namespace
-   duplicates. The migration rechecks those invariants under table locks
-   before adding the unique indexes and `NOT NULL` constraint.
+A view does not define database schema. Agents create or update databases through native
+database tools, then link them to the Space.
 
 ---
 
 ## Rendering Model
 
-Notis Apps render as React components directly inside the portal's React tree.
+Space views render as React components directly inside the portal's React tree.
 
 The portal dynamically imports the app's ES module bundle, resolves the route component by its `export_name`, creates a dedicated `ShadowRoot` for the app surface, and renders the route into that shadow tree inside a `NotisProvider` with a real `NotisRuntime`. This gives apps:
 - instant route switching (no document reload)
@@ -2469,104 +1581,6 @@ also reports inactive toolbars after their shadow-root content is detached.
 
 ---
 
-## App Structure Reference
-
-A complete Notis app project looks like this:
-
-```
-my-app/
-  app/
-    layout.tsx          # Root layout that imports SDK/app styles
-    page.tsx            # Default route
-    globals.css         # Global styles
-    tasks/
-      page.tsx          # /tasks route
-  components/
-    ui/
-      button.tsx        # shadcn components (scaffolded)
-      card.tsx
-      ...
-  notis.config.ts       # App declaration (database refs, routes, tools)
-  vite.config.ts        # Vite config with notisViteConfig()
-  package.json
-  tailwind.config.ts
-  .notis/
-    state.json          # Linked app ID (after notis apps link/create)
-    output/
-      manifest.json     # Generated manifest (after notis apps build)
-      bundle/           # ES module bundle (after notis apps build)
-        app.js
-        app.css
-```
-
-### Generated manifest
-
-`notis apps build` generates `.notis/output/manifest.json`:
-
-```json
-{
-  "version": 1,
-  "spec_version": 3,
-  "app": {
-    "name": "Task Manager",
-    "description": "Track and manage team tasks",
-    "icon": "phosphor:check-square"
-  },
-  "routes": [
-    {
-      "path": "/",
-      "slug": "index",
-      "name": "Dashboard",
-      "icon": "phosphor:squares-four",
-      "default": true,
-      "export_name": "index",
-      "collection": null
-    },
-    {
-      "path": "/tasks",
-      "slug": "tasks",
-      "name": "All Tasks",
-      "icon": "phosphor:list",
-      "export_name": "tasks",
-      "collection": {
-        "database": "tasks",
-        "titleProperty": "title",
-        "parentProperty": "Parent task",
-        "sidebar": {
-          "mode": "tree",
-          "allowCreate": true
-        }
-      }
-    }
-  ],
-  "bundle": {
-    "js": "bundle/app.js",
-    "css": "bundle/app.css"
-  },
-  "databases": ["tasks"],
-  "tools": ["LOCAL_NOTIS_DATABASE_QUERY"]
-}
-```
-
-### Bundle storage
-
-Deployed bundles are stored in Supabase Storage at:
-
-```
-app-code/{app_id}/v{version}/
-  manifest.json
-  bundle/app.js
-  bundle/app.css
-```
-
-The matching editable source snapshot is stored privately at:
-
-```
-app-source/{app_id}/v{version}/
-```
-
----
-
 ## SDK Reference
 
 `Dialog` is the SDK-owned native modal; apps own its content and actions. See the [SDK component reference](../server/skills/notis-apps/references/sdk.md) for its props. Browser top-layer rendering keeps it above selection toolbars inside either rendering boundary, and SDK collection shortcuts are suspended within it.
@@ -2576,7 +1590,7 @@ app-source/{app_id}/v{version}/
 | Import | Purpose |
 |--------|---------|
 | `@notis/sdk` | `NotisProvider`, runtime hooks |
-| `@notis/sdk/config` | `defineNotisApp()` for `notis.config.ts` |
+| `@notis/sdk/config` | `defineSpaces()` for the Space source index and `defineSpace()` for each Space |
 | `@notis/sdk/vite` | `notisViteConfig()` for `vite.config.ts` |
 | `@notis/sdk/styles.css` | Shadow-safe app shell classes and base app-surface styles |
 
@@ -2663,7 +1677,7 @@ What it does and does not do:
 
 - **The event is only a signal.** The change feed carries no rows. When it fires, the hook refetches through `LOCAL_NOTIS_DATABASE_QUERY` on the runtime bridge, so app scoping, tool permissions and billing are exactly what they were before — app code never sees data that did not come back through the bridge.
 - **Bursts collapse.** A skill rewriting a table produces one refetch, not one per row (300 ms debounce). Regaining window focus or tab visibility also re-checks, so a view that was backgrounded is correct on return.
-- **`live` is honest.** It is true only while a feed is actually attached. Hosts without one — the temporary `apps verify` harness, the screenshot stub, the vite preview — return rows normally with `live === false`. Keep a manual refresh control for those, as above.
+- **`live` is honest.** It is true only while a feed is actually attached. Hosts without one — the offline `notis spaces verify` harness, the screenshot stub, the vite preview — return rows normally with `live === false`. Keep a manual refresh control for those, as above.
 - **Only app-owned databases.** The slug is resolved against the databases the app declares; anything else is inert.
 
 #### Live updates in Spaces
@@ -2697,7 +1711,7 @@ return available ? (
 - **`skill`** is the alias of a Skill the Space links (`skills/<alias>/` in its source). The host rejects an alias the Space does not link, so view code can never point the manager at a Skill the Space does not list. Omitted, the work is handed over without a Skill binding. Legacy App views hand over the prompt and context only.
   The server reads a Skill the published source declares under `resources` through that revision's frozen binding, and any other Skill the Space links (a `skills/<alias>/` folder, `notis skills create` with a Space destination) through its current link, as the person preparing the draft: any Editor of the Space, not only its owner (`server/lib/space_skill_access.py`). The draft, Send and the run each check it again. A Skill that is unlinked, disabled or unreachable is refused as `skill_unavailable`; only a lost Space is refused as `space_unavailable`.
 - **`autoSend`** depends on the host. A Space view always opens the complete prepared message (`@App @Database… /Skill <prompt>`) for the user to read and send, and resolves `drafted`: it never submits on the user's behalf. A legacy App view submits that message only when `handover()` starts during an active user gesture such as a button click; background calls open a draft. The normal chat send path retains progress, cancellation and failed-draft recovery. `sent` requires the host's accepted submission, not merely opening the composer; absent hosts and failed submissions resolve `drafted`.
-- **`available` is honest.** Hosts without a manager chat (the temporary `apps verify` harness, the vite preview) leave `runtime.handover` undefined and `available` false. Keep the app's own fallback — a copyable prompt — for those, as above.
+- **`available` is honest.** Hosts without a manager chat (the offline `notis spaces verify` harness, the vite preview) leave `runtime.handover` undefined and `available` false. Keep the app's own fallback — a copyable prompt — for those, as above.
 
 A Space's **Set up** button is this same call with its linked onboarding Skill, for example `handover({ skill: 'journal-onboarding', prompt: 'Help me set up my Journal reminders.' })`.
 Converted App roots also expose **Set up** in their sidebar row menu. Package
@@ -2724,24 +1738,21 @@ publisher read on sidebar open or synthesize legacy App routing aliases.
 
 #### Cloud computer facts (`useCloudComputer`)
 
-Apps that drive the user's cloud computer used to have to *infer* its state. The Conductor app treated a configured repository as proof that `gh auth login` had happened, because a private clone cannot succeed without it — sound, but it cannot show an account name and cannot notice a revoked credential.
+A page that drives the viewer's cloud computer should not have to *infer* its state. Conductor once treated a configured repository as proof that `gh auth login` had happened, because a private clone cannot succeed without it: sound, but it cannot show an account name and cannot notice a revoked credential.
 
-`useCloudComputer()` answers two facts directly, behind an install-time capability:
+`useCloudComputer()` answers two facts directly, behind the page's reviewable declaration and the viewer's approval:
 
 ```typescript
-defineNotisApp({
-  // ...
-  capabilities: { cloudComputer: 'read' },
-})
+export default defineSpace({ name: 'Workspaces', entry: './view.tsx', cloudComputer: 'read' });
 ```
 
-Declaring `cloudComputer: 'shell'` instead asks for the stronger grant: it implies the
-read facts and, once the user consents (`cloud_computer_shell`), reopens
-`LOCAL_NOTIS_RUN_SANDBOX_SHELL` and the three sandbox file tools for this app's views —
-they are denied to every view otherwise, because shell runs with the sandbox's
-full-authority credentials and the file tools reach the same secrets on disk. Declare it
-only when the app's core actions genuinely run on the cloud computer, the way the
-Conductor app does.
+Declaring `cloudComputer: 'shell'` instead asks for the stronger access: it implies the
+read facts and, once the viewer allows it, adds `run` and `upload` through
+`useCloudComputerShell()` (see [Cloud computer in Spaces](#cloud-computer-in-spaces-cloudcomputer)).
+A page with `read` cannot run commands, because shell runs with the cloud computer's
+full-authority credentials and a file write reaches the same secrets on disk. Declare `shell`
+only when the page's core actions genuinely run on the cloud computer, the way Conductor
+does.
 
 ```tsx
 const { facts, refresh } = useCloudComputer();
@@ -2764,16 +1775,16 @@ The payload is exactly:
 
 Read it the way it is meant:
 
-- **It is a read and only a read.** The declared value is `'read'`; the token persisted on approval is `cloud_computer_read`. There is no create, no resume and no command here — those stay behind `LOCAL_NOTIS_RUN_SANDBOX_SHELL` and the reviewed tool surface matrix.
+- **It is a read and only a read.** The declared value is `'read'`, and the viewer's approval is saved as a Space grant pinned to the approved code. There is no create, no resume and no command here: commands need `cloudComputer: 'shell'` and `useCloudComputerShell()`.
 - **Nothing wakes the VM.** The sandbox is resolved through the read-only readiness path, and `gh auth status` runs *only* when the sandbox is already running, dispatched as internal maintenance so a page render never spends metered Cloud Computer time.
-- **`authenticated: null` means unknown, not signed out.** `reason` says why — `no_sandbox`, `sandbox_not_running`, `probe_failed` — and the app should keep whatever fallback it had for that case.
-- **`available: false` is a shape, not an error.** A user whose plan has no cloud computer gets `{ available: false, reason: 'cloud_computer_unavailable' }`, as do hosts that cannot answer (the temporary `apps verify` harness, the vite preview).
-- **Facts are cached per user for a few minutes.** An app re-renders far more often than a sign-in changes. `refresh()` re-reads, but it can still see the cached answer, so an app that just drove a sign-in itself should trust what it did and not wait for the facts to catch up.
+- **`authenticated: null` means unknown, not signed out.** `reason` says why (`no_sandbox`, `sandbox_not_running`, `probe_failed`), and the page should keep whatever fallback it had for that case.
+- **`available: false` is a shape, not an error.** A user whose plan has no cloud computer gets `{ available: false, reason: 'cloud_computer_unavailable' }`, as do hosts that cannot answer (the offline `notis spaces verify` harness, the vite preview).
+- **Facts are cached per user for a few minutes.** A page re-renders far more often than a sign-in changes. `refresh()` re-reads, but it can still see the cached answer, so a page that just drove a sign-in itself should trust what it did and not wait for the facts to catch up.
 - **Only whitelisted fields cross the bridge.** Sandbox ids, owner tokens, provider errors and the raw `gh` output stay server-side.
 
 #### Cloud worktree dev URLs
 
-The Conductor app can run a repository's recorded dev command inside any of its
+Conductor can run a repository's recorded dev command inside any of its
 worktrees and open the exact authenticated Portal entry point. A user sandbox
 has four fixed public Vercel routes, on ports `3000`, `3010`, `3020`, and
 `3030`; those are the full route list because `Sandbox.update({ ports })`
@@ -2939,152 +1950,50 @@ When manager chat adds current-page context to a handover draft, the active reso
 
 ## CLI Command Reference
 
-The CLI command specifications own the exact options. See the generated
-[CLI reference](../packages/cli/README.md). App commands include `init`, `scaffolds`, `pull`, `create`,
-`link`, `build`, `verify`, `screenshot`, `deploy`, `publish`, `list`, `doctor`, and ordinary lifecycle commands.
+The CLI command specifications own the exact options: see
+`packages/cli/src/command-specs/spaces.js` and the generated
+[CLI reference](../packages/cli/README.md). The `notis spaces` group includes `list`,
+`get`, `init`, `pull`, `inspect`, `build`, `verify`, `preview`, `promote`, `abandon`,
+`deploy`, `action`, `viewer-read`, `links`, `aliases`, `grants`, `navigation bind`,
+`resources name` and the `store` commands.
 
-Generated Vite scripts use `--configLoader runner` so the file-linked SDK TypeScript
-config loads without relying on native TypeScript loading. New templates use Vite 8
-(Node 20.19+ or 22.12+; the repository runtime is Node 24). Scaffolding also normalizes canonical
-Vite commands in registry templates; custom or compound shell commands remain unchanged.
-For pulled historical source with the canonical `vite build` script, `apps build`
-supplies the loader at execution time and leaves the source snapshot unchanged.
-The SDK retains `rollupOptions`, Vite 8's compatibility alias, because SDK refresh
-also serves historical Vite 5/6/7 app projects. On Vite 8 it adds the upstream
-`esmExternalRequirePlugin` for the same external React entry points: bundled
-CommonJS dependencies must use ESM imports, not browser-side `require()` calls.
-On Vite 8 this plugin alone owns React externalization; listing those entries in
-`rollupOptions.external` too would bypass its CommonJS conversion. Historical
-Vite versions keep the original external list instead.
-The bundle remains one `app.js` ES module plus `app.css`; host and CORS settings
-remain caller-owned and are not broadened by the SDK.
+Space builds run the canonical `vite build --configLoader runner` script with the CLI's
+own Node executable (`packages/cli/src/runtime/confined-space-build.js`). The bundle is one
+`app.js` ES module plus `app.css`.
 
-## Release-only delivery
+## Space delivery
 
-Workspace runs released app versions only. Local and cloud agents use the same workflow.
-A request to create or edit app source authorizes updating that app in Workspace after checks pass.
-Explicit read-only, preview-only or no-deploy requests stop at local artifacts and checks: no remote
-   app/resource creation or mutation, Workspace preview, deployment or live verification. Store
-publication always needs separate explicit approval.
+Workspace runs published Space revisions only. Local and cloud agents use the same
+workflow. A request to create or edit a Space's source authorizes publishing that Space
+after checks pass. Explicit read-only, preview-only or no-deploy requests stop at local
+artifacts and checks. Store publication always needs separate explicit approval.
 
-1. Inspect the effective CLI profile and the exact app's current version with `apps list --json`.
-   For an existing released app, preserve local edits and pull its exact app ID into the intended
-   directory. Retain the profile/app link, deployment version and revision. An unreleased container
-   has no source to pull: recover its original local source and edits, or scaffold locally only if
-   that source cannot be recovered. Confirm its exact ID, edit permission and personal/team scope,
-   then run `apps link <app-id> <source-directory> --expected-version 0` to resume that same container.
-   If a release has appeared, preserve local source separately, pull the current release into a fresh
-   directory and reapply the intended edits. The link guard compares against the same remote read
-   whose version/revision it saves; deploy still rejects a release racing after that read. Do not pull
-   missing source or create another remote app to recover a failed first release.
-2. Scaffold a new app locally, or edit the pulled source. Run `apps build` and automated
-   `apps verify` before new remote creation. Missing browser tooling or failed checks blocks delivery;
-   printed URLs and `--no-browser` are not passing verification. Install browser tooling with
-   `npm exec --yes --package agent-browser@latest -- agent-browser install`; if needed run
-   `npx --yes --package @notis_ai/cli@latest --package agent-browser@latest -- notis apps verify`.
-3. Reconcile `apps list --json` and the exact intended name/slug, edit permission and personal/team
-   scope. Default to personal only when no team was requested. Reuse a matching editable identity;
-   stop on ambiguous matches or conflicting identity/scope. Create only when none exists, using
-   `apps create "<exact app name>" .` (or `--team-id <verified team ID>`). Read back the same ID.
-   A failed first release leaves a container: reuse it, never duplicate or automatically delete it.
-4. Compare existing app-owned schemas. Create only necessary missing databases against that exact
-   app ID. Change existing schemas by verified database ID and ownership, and only with backward-
-   compatible changes before release. Read back each change. Breaking changes need separate coordination.
-   Ordinary note/record edits and existing resource editors remain immediate.
-5. Run `apps deploy` against the same linked app. It builds, verifies a frozen source/artifact
-   snapshot with stubs, then sends that snapshot to the backend. `--skip-build` accepts only unchanged,
-   valid output and still verifies. Do not bypass the backend or create implicitly on deploy.
-6. Read back the exact installed app ID, integer version and Portal URL with `apps list --json`.
-   Run `apps verify --mode live` and open the installed app in the actual Portal for surface proof.
-   A live harness check alone does not prove the deployed bundle rendered in Portal.
-7. Report **failed before activation**, **deployed but unverified**, or **outcome unknown** accurately.
-   Never blindly replay an uncertain create/deploy response; reconcile its exact identity/version first.
-   `apps publish --confirm-ready` is **Publish to Store**, separately approved and listing-gated.
-   Workspace delivery is **Update app**, with no Store screenshot/readiness requirement.
-
-Deployment-base validation requires both `base_version` (including zero for a new
-container) and `expected_updated_at`. `app_deployment_base_required` identifies
-missing fields. A successful link from an older CLI does not establish a usable
-base: use the CLI build matching the backend, relink the exact unreleased app,
-and rebuild/verify its source. Never synthesize a revision, relax the backend
-comparison, or recreate the app. A development-checkout CLI can validate a dev
-backend without an npm publication; that recovery does not update the published
-CLI used by other agents.
-
-Definite activation rejections and pre-activation upload failures become terminal CLI
-idempotency results only after owned staging is reconciled. Missing readback, lost claim
-ownership, transport failures and uncertain completion remain unresolved; no cleanup or
-replay is inferred from an error message. Temporary verification cleanup must succeed
-before delivery can report success, and interruption reports retain their activation
-outcome even if cleanup fails.
-
-### Restore historical source as a new release
-
-Pull the current release into a fresh checkout first. Retrieve historical source into a different
-folder (`apps pull <id> <historical-dir> --source-version <n>`). Replace source in the current checkout
-without replacing its `.notis` profile/app link or deployment base. Update `package.json`'s
-`notisAppVersion`, check compatibility with current resources, build, verify and deploy as a new
-release. Preserve app/database/skill IDs. Never decrement the deployment counter, rewrite snapshots,
-or claim to undo user data or external actions.
-
-## Transactional release activation
-
-The backend owns release authorization and activation. Delivery is **prepare → upload → transactional
-activation → readback** through the service-role-only `commit_notis_app_release` function.
-
-- Prepare source skills without modifying active contents. Capture exact resource revisions and
-  content fields, because an ordinary skill editor may not advance `updated_at`.
-- Acquire the existing deployment claim with an exact app-row CAS. Reserve attempt-owned skill paths
-  in the same write. Renewal must match the owned revision; bookkeeping never absorbs external edits.
-- Upload the frozen bundle and immutable source snapshot with no overwrite. Private skill bundles
-  have attempt-unique paths. The claim journals every uploaded path, including the backend manifest.
-- Lock source skills before apps, matching ownership-association lock ordering. Revalidate edit scope,
-  lifecycle/deletion state, claim/version/expiry, app revision and every prepared source-skill revision.
-- Activate manifest/version and skills atomically; preserve stable skill IDs, ownership and membership.
-  Tombstone removed source skills. Preserve independently attached resources, automation state,
-  capability grants and database contents. Write the final app row after ownership tombstone triggers.
-- Upload errors and transaction conflicts preserve the previous active release. Cleanup can reconcile
-  a failed claim's current revision only to abort that exact uncommitted attempt, never to activate it.
-  Never clean uncertain commits; prove outcome by release ID/version readback first.
-- Storage upload failures report `app_storage_upload_failed` (502); only an upstream HTTP 409
-  reports `app_storage_conflict`. Error details retain the structured upstream status and object
-  identity, even when the storage SDK's JSON decoder masks an HTML error. Response bodies,
-  request headers, signed URLs, and credentials are not included in those diagnostics.
-- Post-commit cache invalidation, provider work, old unreferenced runtime-bundle cleanup or local CLI
-  persistence failure does not turn a committed release into an undeployed result. Source snapshots
-  remain immutable; old runtime bundles are not a restore dependency.
-
-The additive migration is `migration/20260905_atomic_app_release.sql` in the shared App/Portal project.
-It is compatible with older production code and does not migrate or delete DEV data. Updated clients
-use release-only delivery; old DEV clients are unsupported. No compatibility endpoint, recovery
-campaign, hosted preview, restore API or new dashboard is introduced.
-
-### Temporary test harness
-
-`packages/cli/src/runtime/app-test-server.js` serves only explicitly selected projects during
-`verify`/`screenshot`. It supports stubs, live runtime calls, selected routes and screenshot scenarios.
-It has no folder discovery, watcher, Desktop registration, persistent roots, consumer leases or
-Workspace mount. Servers and browser sessions close on completion or interruption. `--keep-open`
-is explicit temporary triage, not Workspace preview or a passing automatic delivery check.
-
-Workspace navigation, sidebar ordering and runtime authorization use the installed app ID and
-manifest. Unreleased containers cannot hydrate runnable runtime descriptors or create resources by
-being opened. Local source edits, multiple Desktop instances and restarts cannot change the running
-version. Successful releases become visible through normal navigation/refresh; app URL and sidebar
-position remain stable.
+1. Read the exact Space with `notis spaces get` and pull its current source into an empty
+   directory with `notis spaces pull`, which also writes its linked resources and Skill
+   folders (see
+   [Source, links, Skill folders and the lock file](#source-links-skill-folders-and-the-lock-file-r5-decision-10)).
+2. Edit the source, then run `notis spaces build` and `notis spaces verify`, which renders
+   the frozen build with offline fixtures and validates its current action
+   authorizations without executing actions.
+3. Publish with `notis spaces deploy` against the same Space (`--space-id`), with a
+   retry-safe `--request-id`; it updates only that Space and never its siblings or the
+   Store. To review first, `notis spaces preview` seals a checked candidate and returns its
+   preview link; `notis spaces promote <release-id>` then publishes that exact revision,
+   or `notis spaces abandon <release-id>` closes it.
+4. Read back the published revision and open the Space in the actual Portal. Report
+   **failed before publication**, **published but unverified**, or **outcome unknown**
+   accurately, and never blindly replay an uncertain publish; reconcile its exact revision
+   first.
 
 ## Design Guidelines
 
-Notis Apps should feel native to the Portal.
+Space views should feel native to the Portal.
 
 Preferred UI approach:
 - **Use scaffolded shadcn components** (`@/components/ui/*`) -- do not hand-roll buttons, cards, or badges.
 - **Use Notis theme tokens** -- `bg-background`, `bg-card`, `border-border`, `text-foreground`, `text-muted-foreground`.
-- **Use portal shell classes** -- `notis-app-shell` for ordinary pages, `notis-app-split` plus `notis-app-pane-list` / `notis-app-pane-detail` for list-plus-detail pages, `notis-app-surface` for a flat tinted panel, `.list-row` for rows. The design bar in the shipped skill (`server/skills/notis-apps/SKILL.md`, "Design bar") is enforced by `notis apps build` and by the deploy endpoint through `server/config/notis_app_design_rules.json`; the only override is an inline `notis-design-allow` directive with a reason.
-- **SDK refresh safety** -- Build refreshes template-owned SDK files before recording source provenance, rejects symlinked SDK targets, and replaces files without mutating outside hard-link targets. A failed refresh invalidates the prior build receipt.
-- **Verify gates deploy** -- Standalone `notis apps verify` records `.notis/output/verify.json` as local diagnostics and runs runtime design assertions at 1280px and 390px. `notis apps deploy` always verifies its own frozen source/artifact snapshot before upload, including when reusing build output. A prior report cannot authorize deployment or bypass unavailable browser checks; no environment-variable bypass exists. Verification diagnostics are excluded from the release and its build receipt.
-- **Embedded SDK stays current** -- every `apps build`, `verify`, `screenshot`, and `deploy` re-syncs the app's `packages/sdk` copy to the SDK shipped by the running CLI, so apps pick up hook and style updates without manual steps.
-- **Assume the portal provides theme tokens on the app host** -- apps should feel native by consuming those tokens inside the shadow tree, not by restyling the portal shell.
+- **Use portal shell classes** -- `notis-app-shell` for ordinary pages, `notis-app-split` plus `notis-app-pane-list` / `notis-app-pane-detail` for list-plus-detail pages, `notis-app-surface` for a flat tinted panel, `.list-row` for rows. The design defaults in the shipped skill (`server/skills/notis-apps/references/design.md`) are enforced by `notis spaces build` through `server/config/notis_app_design_rules.json`; the only override is an inline `notis-design-allow` directive with a reason.
+- **Assume the portal provides theme tokens on the view host** -- Space views should feel native by consuming those tokens inside the shadow tree, not by restyling the portal shell.
 - **Keep layouts compact and dashboard-like** -- cards, tables, sections, badges. Not marketing-site heroes.
 - **Use Phosphor icons only** with the `phosphor:` prefix. Never emojis.
 - **Respect the host theme** -- do not hardcode dark/light mode or create app-specific palettes.
@@ -3103,51 +2012,36 @@ If a screen looks like a standalone microsite instead of a portal tool, it is to
 
 These rules are the canonical platform assumptions:
 
-1. **Vite + React only** -- No Next.js, no custom server.
-2. **ES module bundle** -- `notisViteConfig()` produces a library-mode bundle with React externalized.
-3. **Component rendering** -- All SDK apps and SDK reports render as React components in the same Shadow DOM host, regardless of source or installation provenance. No SDK app iframe runtime.
+1. **Vite + React only**: no Next.js, no custom server.
+2. **ES module bundle**: `notisViteConfig()` produces a library-mode bundle with React externalized.
+3. **Component rendering**: every Space view renders as a React component in the same Shadow DOM host. No SDK iframe runtime.
 
-   **Trust boundary:** Shadow DOM isolates styles, not JavaScript or credentials. A loaded SDK bundle shares the Portal browser context. Backend ownership, declared tools, capabilities, billing, report-action confirmation and resource revisions remain enforced on the supported SDK/API path; they are not a sandbox against arbitrary same-origin bundle JavaScript. Store review and accepted source provenance are therefore code-trust decisions. Plain HTML documents remain separately sandboxed in `HtmlDocumentFrame`; they are not a second SDK runtime.
-   The portal mounts each app into a shadow-scoped surface and injects the runtime provider itself.
-4. **HTTP bridge for data** -- SDK operations use the authenticated runtime bridge; sizing and navigation stay in the shared host.
-5. **Declarative tools** -- Declare in `notis.config.ts`, enforced server-side.
-6. **Database refs only** -- Declare database slugs in `notis.config.ts`. A string packages schema only; `{ slug: 'templates', seedDocuments: true }` explicitly includes that database's small, non-personal starter dataset in Store snapshots. Database schema is managed through native database tools, not through app deploys.
-7. **Phosphor icons, not emojis.**
-8. **`notis apps deploy` is not store publishing** -- it updates the linked installed app and source snapshot only; review starts separately from App Details or `apps publish --confirm-ready` after explicit user approval.
-9. **Portal-owned sidebar trees are structural** -- when a route declares `collection.sidebar`, the portal owns that sidebar. Agents must not replace it with custom in-app navigation as a workaround.
-10. **Portal globals are unsupported** -- apps must not rely on `window.__NOTIS_RUNTIME__`, portal DOM hooks, or global DOM portals such as `createPortal(..., document.body)`.
-11. **One release-only delivery gate** -- Local/cloud app create/edit requests authorize Workspace updates after checks. Explicit no-deploy requests and separate Store approval remain binding.
+   **Trust boundary:** Shadow DOM isolates styles, not JavaScript or credentials. A loaded SDK bundle shares the Portal browser context. The portal mounts each view into a shadow-scoped surface and injects the runtime provider itself.
+4. **HTTP bridge for data**: SDK operations use the authenticated runtime bridge; sizing and navigation stay in the shared host.
+5. **Declared access only**: a view reaches only the actions, reads and capabilities its Space declares, enforced server-side (see [What a view declares](#what-a-view-declares-v4-path-params-shows-memory-chrome-markdown) and [Provider actions](#provider-actions-one-sealed-issuer-grant)).
+6. **Phosphor icons, not emojis.**
+7. **`notis spaces deploy` is not Store publishing**: it updates one Space; Store publication is separately approved.
+8. **Portal-owned sidebar trees are structural**: agents must not replace a portal-owned sidebar with custom in-view navigation as a workaround.
+9. **Portal globals are unsupported**: views must not rely on `window.__NOTIS_RUNTIME__`, portal DOM hooks, or global DOM portals such as `createPortal(..., document.body)`.
 
-### Unsupported shortcuts
+### Anti-patterns: NEVER do these
 
-When agents encounter older app instructions, prefer the current platform model in this document.
-
-- `notis apps push` -- there is no push command; use `init -> build -> create/link -> deploy`. `notis apps pull <app-id>` is supported and downloads the persisted source snapshot for an installed app.
-- Manual database creation is expected -- create databases through native tools, then declare slug refs in `notis.config.ts`. Use the object form with `seedDocuments: true` only for deliberate starter content that every installer should receive.
-- Direct low-level tool calls instead of CLI -- use the CLI
-- Raw `views/<slug>/index.js` files -- use standard React pages in `app/`
-- Older dual-renderer or iframe-based assumptions
-
-### Anti-patterns -- NEVER do these
-
-- **NEVER assume app deploy creates databases** -- Create or update databases through native Notis tools first, then reference them by slug in `notis.config.ts`.
-- **NEVER bypass the supported workflow by manually stitching together low-level save or lint calls** -- Use `notis apps pull`, `notis apps build`, `notis apps verify`, `notis apps create`, `notis apps link`, and `notis apps deploy`.
-- **NEVER write raw `views/<slug>/index.js` files** -- Write standard React pages in `app/`.
-- **NEVER treat `apps deploy` as Store approval** -- It updates the linked installed app for the current account or team scope only. Submit only after the user explicitly confirms App Details is ready.
-- **NEVER explore server code or tool schemas to invent an alternative app workflow** -- Use the Notis CLI.
-- **NEVER replace a route-backed portal sidebar with a custom in-app sidebar because a preview looks wrong** -- preserve the manifest contract and escalate the missing sidebar as a platform/runtime issue.
-- **NEVER invent a custom visual language** -- Apps should look like a natural extension of the portal.
-- **NEVER hand-roll buttons/cards/badges when the scaffold already provides shadcn primitives.**
+- **NEVER assume publishing creates databases**: create or update databases through native Notis tools first, then link them.
+- **NEVER bypass the CLI workflow by stitching together low-level save calls**: use `notis spaces pull`, `build`, `verify` and `deploy` (or `preview` and `promote`).
+- **NEVER treat `notis spaces deploy` as Store approval.**
+- **NEVER explore server code or tool schemas to invent an alternative publishing workflow**: use the Notis CLI.
+- **NEVER replace a portal-owned sidebar with a custom in-view sidebar because a preview looks wrong**: escalate it as a platform issue.
+- **NEVER invent a custom visual language**: views should look like a natural extension of the portal.
+- **NEVER hand-roll buttons, cards or badges when the SDK already provides them.**
 
 ---
 
 ## Testing
 
-1. **Build validation**: `notis apps build` must succeed without errors.
-2. **Route smoke validation**: `notis apps verify` must render every route in the stub harness without runtime crashes.
-3. **Project health check**: `notis apps doctor` shows problems/warnings.
-4. **Release-only Workspace acceptance**: two Desktop instances and a browser retain the released version after source edits and restarts. A release updates the same ID, stable route URL and sidebar position through normal refresh/navigation.
-5. **Post-deploy verification**: Verify the deployed bundle via `/portal_views/get` -> `runtime_descriptor.bundle.js_url`. The signed bundle URL is the most reliable browser check in dev because it bypasses flaky local auth injection while still exercising the real runtime bridge, tool calls, and referenced databases.
+1. **Build validation**: `notis spaces build` must succeed without errors.
+2. **Offline render verification**: `notis spaces verify` must render the frozen build with offline fixtures and pass its action-authorization checks.
+3. **Preview before publishing when reviewing**: `notis spaces preview` returns an authenticated preview link of the sealed candidate.
+4. **Post-publication check**: open the published Space in the actual Portal; a passing offline check alone does not prove the published bundle rendered there.
 
 ---
 
@@ -3158,21 +2052,18 @@ Use these files when you need implementation detail after reading this doc:
 - [AGENTS.md](../AGENTS.md)
 - [server/skills/notis-apps/SKILL.md](../server/skills/notis-apps/SKILL.md)
 - [packages/sdk](../packages/sdk)
-- [packages/cli/src/command-specs/apps.js](../packages/cli/src/command-specs/apps.js)
-- [packages/cli/src/runtime/app-platform.js](../packages/cli/src/runtime/app-platform.js)
-- [packages/cli/src/runtime/app-test-server.js](../packages/cli/src/runtime/app-test-server.js)
+- [packages/cli/src/command-specs/spaces.js](../packages/cli/src/command-specs/spaces.js)
+- [packages/cli/src/runtime/space-platform.js](../packages/cli/src/runtime/space-platform.js)
+- [packages/cli/src/runtime/space-source.js](../packages/cli/src/runtime/space-source.js)
 - [server/lib/vercel_sandbox.py](../server/lib/vercel_sandbox.py)
-- [server/lib/apps_service.py](../server/lib/apps_service.py)
-- [server/lib/app_submission_service.py](../server/lib/app_submission_service.py)
-- [server/lib/github_publish_helper.py](../server/lib/github_publish_helper.py)
-- [server/lib/app_registry_service.py](../server/lib/app_registry_service.py)
-- [server/routers/portal_views/_1_code/entry.py](../server/routers/portal_views/_1_code/entry.py)
-- [server/routers/portal_apps/_1_code/entry.py](../server/routers/portal_apps/_1_code/entry.py)
-- [server/routers/registry_publish/_1_code/entry.py](../server/routers/registry_publish/_1_code/entry.py)
-- [portal/src/app/(protected)/apps/[appId]/AppPageClient.tsx](../portal/src/app/(protected)/apps/%5BappId%5D/AppPageClient.tsx)
+- [server/routers/portal_spaces/_1_code/entry.py](../server/routers/portal_spaces/_1_code/entry.py)
+- [server/lib/space_presentation.py](../server/lib/space_presentation.py)
+- [server/lib/space_navigation.py](../server/lib/space_navigation.py)
+- [server/lib/space_store.py](../server/lib/space_store.py)
 - [portal/src/components/apps/AppViewRenderer.tsx](../portal/src/components/apps/AppViewRenderer.tsx)
+- [portal/src/components/spaces/PersistentSpaceViews.tsx](../portal/src/components/spaces/PersistentSpaceViews.tsx)
 - [portal/src/lib/appBundleLoader.ts](../portal/src/lib/appBundleLoader.ts)
-- [portal/src/lib/appRuntimeBridge.ts](../portal/src/lib/appRuntimeBridge.ts)
+- [portal/src/lib/spaceRuntimeBridge.ts](../portal/src/lib/spaceRuntimeBridge.ts)
 
 ---
 
@@ -3180,32 +2071,17 @@ Use these files when you need implementation detail after reading this doc:
 
 If the task is conceptual, start with this document.
 
-If the task is execution-oriented, then read this document first and use the `notis-apps` skill second.
+If the task is execution-oriented, read this document first and use the `notis-apps` skill second.
 
 If the code seems to disagree with this document, treat this file as the intended platform contract and verify the specific implementation detail before changing behavior.
 
-If a collection-tree sidebar appears missing, do not redesign the app around that absence. Keep `collection.sidebar` as the source of truth and treat the mismatch as a portal bug to investigate.
-
-
 ## Instant-view lifecycle and cache ownership
-
-The authenticated layout retains at most three visited app shells, including while Manager, documents or ordinary product pages are selected. Unvisited pages are never mounted speculatively. Same-app navigation changes only the route export inside the existing shell; Authored apps, Store installations, duplicates and SDK reports all use the same React/Shadow DOM host and scoped runtime bridge. Hidden shells cannot publish page context, claim top-bar search, or initiate navigation. A retained App shell or report that becomes active again restores its top-bar search, as on Beta. Without an active app target every retained shell is hidden and inactive; leaving the authenticated layout or changing the session retires them.
 
 `AppOpeningBoundary` owns the entire host opening sequence (lazy route module, authorized descriptor, bundle and stylesheet). It shows no fake page or dashboard skeleton. A single small indicator appears only after 150 ms of continuous preparation; handing off between stages does not restart that delay. The indicator is a compact 28px pill in the bottom-left column shared with toasts and the connection pill (which stacks above it while this device cannot reach Notis): anchored to the bottom-left corner of the non-scrolling app-view viewport (`SidebarInset`) on desktop, and to the screen at the chat launcher's baseline below 1024 px, with safe-area and keyboard clearance, opaque inverse-theme colors, a 5px Notis-green pulse, and a scaled-down layered overlay shadow. Its label is “Opening”; the recovery state stays compact with “Still opening” and Retry. The pulse respects reduced-motion preferences. It sits above app content without covering the page with a blocking layer. After 20 seconds the indicator offers recovery. Once the real app has mounted, only the app owns missing-data placeholders. Isolated Store frames report render readiness to this same parent boundary; they do not display a second host loader.
 
 While an uncached destination descriptor is pending, the previous route stays mounted and visible but inert. Its resource/item identity and path remain those of the displayed descriptor until the destination commits. This preserves the shell without allowing an old article's controls to act under a new article's context. Warm cached opens and background revalidation do not replace populated content.
 
-`GET /portal_views/get?bootstrap=light` preserves authentication, entitlement, live app access checks, route/tool permissions, selected collection item ancestry, schemas and signed assets. It skips tool discovery and initial data queries. Omit the option for the legacy full bootstrap. `tools.read_cache_scope` shares reads only across routes with identical effective permissions; `access_hash` remains route-specific.
-
-The view bridge runs blocking authentication, entitlement, descriptor hydration/signing and native database reads in worker threads so independent app requests can progress on the event loop. Live access and database-definition checks remain mandatory on cached descriptors. The cached-detail path reads the live app row and its owned database definitions together, with an exact embedded count; missing, malformed or truncated embedded sets fall back to the fully paginated database read. It never caches the live access decision or changes the returned detail payload. Cache invalidation advances an epoch under a short lock; a worker holding an older snapshot cannot repopulate the cache after invalidation. No database I/O runs while that cache lock is held. Generic tool calls also offload connection lookup, billing-user reads and credit-cap evaluation. Financial settlement remains synchronous so cancelling a queued worker cannot skip billing after a paid provider result; access, credit denial and fail-closed billing still complete before a result is returned.
-
-The sidebar's `portal_apps/list` summary read and Portal app authentication/CLI scope checks also run in worker threads, so a concurrent sidebar refresh cannot monopolize the request event loop while a view opens. The existing 10-second, user/options-scoped summary cache retains copy isolation and uses an invalidation epoch: a summary read begun before a mutation cannot repopulate the cache after that mutation. This does not defer authentication or weaken runtime access checks.
-
 App-view database queries include document bodies by default. Lists that only need titles and properties can explicitly use `useDocuments(slug, { includeContent: false })`: the runtime projects metadata columns and returns null body fields, while keeping authorization, filtering, sorting, and pagination unchanged. Metadata and full-content query caches are separate. Open records still use `useDocument`; full-body search must request full content when needed. This opt-in does not change generic database-tool responses or existing apps.
-
-Fully materialized apps reuse their app-owned database rows without consulting legacy unowned databases. App detail shares one fully paginated, request-scoped owned-database read between declared database materialization and interactive metadata. App access is checked first; the snapshot is not retained across requests, newly materialized declared rows are included, and document export remains limited to source-declared databases. Catalog counts use the service-only `notis_app_active_document_counts_v1(text[])` RPC for one exact aggregate over the backend-authorized database IDs; a missing RPC during a rolling rollout falls back to the prior individual counts. Empty databases remain zero and archived rows remain excluded. Native document reads reuse the database snapshot that authorized the document for schema projection instead of performing that same authorization lookup twice; generic document-tool dispatch also runs its blocking read off the event loop.
-
-`internalNavigation.ts` dispatches shared navigation through the save guard; `appViewNavigation.ts` owns persistent installed-app selection. It uses the Next-integrated native History API, with synchronous client-shell selection; non-view routes still use normal router navigation. This avoids a competing RSC transition that can commit an old URL after the new view paints.
 
 Clicked destinations and back/forward navigation start their authorized lightweight descriptor in parallel with the lazy route module. These foreground preparations run at foreground priority, so they are never held behind the speculative queue’s concurrency limit, and they share the same scoped descriptor/asset promises. Every SDK bundle uses the same loader and Shadow DOM mount. Host-provided rich-text and Markdown editors load on demand, with an editor-local accessible placeholder, so non-editor views do not wait for editor code.
 
@@ -3379,7 +2255,7 @@ visible, and true authority changes retire old transports/results.
 
 Retained component-host wrappers must preserve a definite `height: 100%` and must not flex-shrink. Otherwise the renderer's percentage-height chain resolves to content height and split layouts stop above the viewport bottom, especially with short skeletons or empty states. Do not position these wrappers: the opening pill anchors to `SidebarInset`.
 
-For split-view sizing changes, check the real Portal with delayed initial reads and again after content resolves, including a resize. From `portal/`, run `node scripts/smokes/check-split-app-viewport.cjs --session <named-browser-session> --app-id <id> --state loading` (then `--state loaded`). The read-only check verifies top, bottom and horizontal viewport boundaries plus desktop pane heights; it fails if the requested loading state is absent. Standalone app-harness screenshots do not prove the Portal's parent-height chain.
+For split-view sizing changes, check the real Portal with delayed initial reads and again after content resolves, including a resize. From `portal/`, run `node scripts/smokes/check-split-app-viewport.cjs --session <named-browser-session> --app-id <view runtime id> --state loading` (then `--state loaded`). The read-only check verifies top, bottom and horizontal viewport boundaries plus desktop pane heights; it fails if the requested loading state is absent. Standalone app-harness screenshots do not prove the Portal's parent-height chain.
 
 The shared Shadow DOM frame supplies a definite content-panel height for every app provenance. App panes opt in to full-height layout; normal document pages retain natural overflow. Verify both top and bottom pane edges, tall-to-short resizing, resource changes and long-content scrolling in the actual Portal, not only a standalone harness.
 
@@ -3403,8 +2279,7 @@ Hover/focus and newest-first chat-link preparation fetch authorized light destin
 
 The shared document/history/save and recent-chat preparation contract is owned by the Portal navigation code under `portal/src/`.
 
-The canonical UI/authoring contract and cached-read examples live in [the shipped Notis apps skill](../server/skills/notis-apps/references/design.md#instant-view-loading-contract-required). The CLI scaffold and bundled SDK source mirror that contract. Release the compatible host/SDK before deploying apps that rely on this behavior; this migration itself does not authorize package publication or deployment.
-
+The canonical UI/authoring contract and cached-read examples live in [the shipped Notis apps skill](../server/skills/notis-apps/references/design.md#instant-view-loading-contract-required). The CLI scaffold and bundled SDK source mirror that contract. Release the compatible host/SDK before deploying Spaces that rely on this behavior; this migration itself does not authorize package publication or deployment.
 
 ### Loading measurement objectives
 
@@ -3427,9 +2302,9 @@ language translates an already-cached error without replaying a read. Stable cod
 and developer diagnostics remain on the error; server/action refusals retain the
 host bridge's translated messages and receipt metadata.
 
-### App scaffold styling
+### Scaffold styling
 
-New CLI app scaffolds use Tailwind CSS 4 with `@tailwindcss/postcss`.
+New CLI scaffolds use Tailwind CSS 4 with `@tailwindcss/postcss`.
 `app/globals.css` is the only Tailwind entry point: it explicitly loads
 `tailwind.config.ts` and scans app, component, library and bundled SDK sources.
 The retained config owns Notis theme tokens and the animation plugin. SDK

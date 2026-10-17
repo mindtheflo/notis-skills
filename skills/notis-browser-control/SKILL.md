@@ -93,8 +93,8 @@ Use live CLI help for command syntax instead of loading generic examples unneces
 
 Read only the guide needed for this task from this skill bundle.
 
-- For authenticated Notis apps, reports and documents, use the shared reading
-  guide under [Notis Apps](../notis-apps/SKILL.md#read-existing-apps-and-resources)
+- For authenticated Notis Spaces, reports and documents, use the shared reading
+  guide in [the notis-apps skill](../notis-apps/references/reading.md)
   (hosted guide: `notis://docs/notis-apps/references/reading.md`). Notis sign-in
   links work in a sandbox too; they do not require local cookies or credentials.
 - [Embedded Agent Browser Skill](references/browser-help.md)
