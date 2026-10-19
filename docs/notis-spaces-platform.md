@@ -466,6 +466,12 @@ automation, and turning a Site off revokes it at once.
   to report the data preserved before the Team preflight; any failure returns
   409 `space_account_preservation_required` before anything irreversible.
   `purge_notis_account_spaces` runs before the account rows are removed.
+  Once the public account is absent, `prepare_notis_account_storage_cleanup`
+  binds the ready recovery job to its linked Auth identity. Surviving resource
+  references retain their files under service ownership; the backend removes
+  remaining owned files through the Storage API, rechecks the inventory, and
+  only then deletes the login. The same cleanup runs during recovery. Never
+  delete Storage metadata directly: that leaves the underlying bytes behind.
 
 - **Space Store** (`server/lib/space_store.py`, `store-*` operations,
   `notis spaces store ...`): any current Editor publishes a Space with its
