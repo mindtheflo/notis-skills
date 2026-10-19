@@ -505,153 +505,97 @@ disposable accounts only.
 
 #### Site origin
 
-A Site runs its author's code, so it never runs on the Portal origin, whose localStorage holds the
-Portal session and whose script-readable Home Screen cookie carries a refresh token. Site links are
-`{DOMAIN_SITES}/s/<key>#<bearer>` (`server/lib/space_site_origin.py`), where `key` is the first 16
-hex characters of SHA-256(bearer). Without a separate Site origin (unset, malformed, or sharing a
-site with a Portal or API host) Sites are not available: `GET /portal_spaces/sites` answers
-`available: false` with no links, and turning a Site on, for a Space or a record, is refused with
-`409 sites_not_available` before anything is read or written (`set_space_site` in
-`server/lib/space_membership.py`). Turning an existing Site off keeps working, and every Site still
-on stays visible with a way to turn it off. The share panel (the Space view's top bar Share) then
-shows "Sites aren't available yet" in each Site row without the switch (with the switch, to turn
-it off, while that row's Site is still on). Its first row is the view's own Site, the Space's or its
-page's (`siteFor` in `portal/src/lib/spaceSharing.ts`). A record page the view shows with
-`DocumentPage` `share` on adds a row for its record-param Site (`record_key` set): while it shows, the
-page registers in the view's `RecordShareSlot` (`portal/src/lib/spaceRecordShareSlot.ts`) and drops
-its toolbar Share, so the view keeps one Share. The row reads that Site with `recordSiteFor` and
-turns it on or off through `site()` in `portal/src/lib/spaceRecordClient.ts`; the view's own page has
-one Site, so its row replaces the view's, and the top bar globe shows while any listed Site is on.
-When more than one Site matches a page (`recordSites`: its record-param Sites under the param that
-opens it, plus an older Site of its own view), its row disables the switch and shows the
-`siteRecordAmbiguous` note, and `site()` refuses with the client-only `409 site_record_ambiguous` (the
-server's `site_record_param_required` covers other refusals and keeps the generic Site error); when
-one of them is an older Site of the view, the view's own row stays so it can still be turned off. A
-Space that opens straight onto the view (`landingParents` in `portal/src/lib/spaceLanding.ts`: its chosen page, else its default child,
-as `readSpaceLanding` follows them) never shows its own view, so for each one the person edits the
-panel starts with a "Share all of {space}" row that turns it to that Space's sharing, with a way back.
-The panel's adoption and caught-error measurement contract lives in
-`portal/src/lib/spaceShareAnalytics.ts`; those terminal UI attempts are distinct from the committed,
-receipt-deduplicated outcomes in `server/lib/space_analytics.py`. New panel series begin at their
-verified production cutover; earlier use is unknown, not reconstructed from backend changes.
-Any other record-param Site (a `ShareControl`, or a page shown in another Space's view) is managed
-from that record's Share popover. The popover shows "Sites aren't
-available yet" without "Create public link" when no Site is on for the record; a record Site still
-on shows as shared, without a link to copy, with "Stop sharing" (`site()` reports it with a null
-`url`, as it does a lost link while Sites are available). "This site's link is unavailable" appears only when a Site is on, Sites are
-available and its link could not be derived (a signing-key rotation). A Site host build without a usable Site origin says the site can't open here instead of
-asking to reopen the link. Production has no Site origin until the Sites domain is
-chosen, and the Main import copies no Site rows, so no Site exists there until then. Production uses
-its own registrable domain, never a `notis.ai` subdomain:
-localStorage is per origin, but cookies are per domain, so a subdomain could set `Domain=notis.ai`
-cookies that reach the Portal and API (cookie tossing, for example a planted Home Screen session)
-and would be same-site with them, and the same host shares host-only cookies on every scheme and
-port.
+A Site runs its author's code, so it never runs where a Notis session lives: the Portal origin keeps
+the session in localStorage, and a script-readable Home Screen cookie for `notis.ai` carries a
+refresh token. Every Site has a host of its own: `https://<name>.notis.space` (a random name until
+someone renames it), the account's own domain once it points at that Site, and
+`http://<name>.localhost:<SITES_PORT>` in local development. The API builds every address from the
+Sites apex `DOMAIN_SITES` and decides which origins are Site origins: `server/lib/space_site_origin.py`
+owns that rule (including why a sibling host is not enough and which apexes it refuses), and
+`server/lib/space_site_hosts.py` owns names and what each host serves. Hosting, the Worker, own
+domains and the rollout are in [Sites hosting](sites-hosting.md).
 
-Both sides enforce it. `site_origin()` refuses a `DOMAIN_SITES` whose host is, or shares a
-registrable domain (eTLD+1 by the Public Suffix List, private section included as browsers apply
-it, so `a.vercel.app` and `b.vercel.app` stay separate) with, any Portal or API host, compared by
-host whatever the scheme, port or path: `DOMAIN_PORTAL`, `DOMAIN_PORTAL_PUBLIC`,
-`NEXT_PUBLIC_APP_URL`, `DOMAIN_WEB_SERVER`, `DOMAIN_WEB_SERVER_PUBLIC`,
-`DOMAIN_WEB_SERVER_INTERNAL`, plus `app.notis.ai`, `beta.notis.ai`, `api.notis.ai` and
-`api-beta.notis.ai` whatever the configuration. Two loopback hosts (`localhost`, `*.localhost`,
-`127.0.0.0/8`, `::1`) pair only in development (`ENV=dev`), and never as the same host. A refused
-origin behaves as an unset one (no Site links, no Site CORS) and logs one warning per
-configuration. The Portal's `siteOrigin()` (`portal/src/lib/siteOrigin.ts`) applies the same rule
-to `NEXT_PUBLIC_SITES_URL` against the same Notis hosts, `NEXT_PUBLIC_APP_URL` and
-`NEXT_PUBLIC_SERVER_URL` (not in the Site host build, whose API address is the one its Sites call
-anonymously; the API checks its own hosts), pairing loopback hosts only in a development build;
-when it refuses, the Portal hands no Site over and the Site host runs none. The list comes from
-libraries that bundle it and never fetch it at runtime: `publicsuffixlist` on the API (pinned in
-`server/requirements.txt`; bump the pin to refresh the list) and `tldts` in the Portal.
-
-All Sites share the Site origin, so one Site's code must never receive another Site's bearer:
-
-- **One document per Site.** Each Site link has its own path, so opening another Site in a tab is
-  always a new document. With one shared path, a Site open in the tab (or one that set its own
-  address to that path with `history.replaceState`) would receive the next Site link as a fragment
-  change in its own document and read its bearer.
-- **The bearer leaves the address at once.** The Site host's first head script
-  (`portal/src/site/siteBearer.ts`) moves the bearer into the history entry's classic
-  `history.state` and shows `/site?space=&record=&selection=`, which names no Site and carries no
-  key. The Navigation API lists other same-origin documents' entries with their URLs (and their
-  Navigation API state), never their classic state, so the bearer is never kept in the URL,
-  Navigation API state, sessionStorage or localStorage. `/site` never takes a bearer from its
-  address. `SpaceSiteHost` reads the bearer once, checks its key and keeps it in every entry it
-  pushes, so back, forward and reload work. Copying an open Site's address does not share it: the
-  page then says to open the original link again.
-- **Nothing shared between bundles.** The Site host exposes React to Site bundles as frozen copies
-  on non-writable `window` properties (`portal/src/site/SiteReactGlobals.tsx`), keeps loaded
-  bundles in a module-scoped cache instead of `window.__appBundleCache`, and ignores the Portal's
-  bundle source preload global (`portal/src/lib/appBundleLoader.ts`).
+Without a usable `DOMAIN_SITES` (unset, malformed, an IP address, or sharing a site with a Portal or
+API host) Sites are not available: `GET /portal_spaces/sites` answers `available: false`, and turning
+a Site on, for a Space or a record, is refused with `409 sites_not_available` before anything is read
+or written (`set_space_site` in `server/lib/space_membership.py`). Turning an existing Site off keeps
+working, and every Site still on stays visible with a way to turn it off. Every Site control in the
+Portal sits behind the PostHog flag `spaces_sites` (on top of `spaces`; the rollout is in
+[Sites hosting](sites-hosting.md#rollout)): without it the share panel has no Publish tab, the top bar
+no globe and Settings no Sites section, the listing answers `available: false`, and the API refuses
+every Site change but turning one off. The share panel (the Space view's top bar Share) has Share and
+Publish tabs; Publish (`SpacePublishTab` in `portal/src/components/spaces/SitePublishPanel.tsx`) then
+says Sites aren't available yet instead of Publish, and keeps Unpublish for a Site still on. It
+publishes the view's own Site, the Space's or its page's (`siteFor` in `portal/src/lib/spaceSharing.ts`).
+A record page the view shows with `DocumentPage` `share` on adds its record-param Site (`record_key`
+set), with a page picker when there is more than one: while it shows, the page registers in the view's
+`RecordShareSlot` (`portal/src/lib/spaceRecordShareSlot.ts`) and drops its toolbar Share, so the view
+keeps one Share. The tab reads that Site with `recordSiteFor` and turns it on or off through `site()`
+in `portal/src/lib/spaceRecordClient.ts`; the view's own page has one Site, so it replaces the view's,
+and the top bar globe and the tab's dot show while any of these Sites is on. When more than one Site
+matches a page (`recordSites`: its record-param Sites under the param that opens it, plus an older
+Site of its own view), Publish and Unpublish are disabled under the `siteRecordAmbiguous` note, and
+`site()` refuses with the client-only `409 site_record_ambiguous` (the server's
+`site_record_param_required` covers other refusals and keeps the generic Site error); when one of them
+is an older Site of the view, the view's own Site stays in the picker so it can still be turned off.
+A Space that opens straight onto the view
+(`landingParents` in `portal/src/lib/spaceLanding.ts`: its chosen page, else its default child, as
+`readSpaceLanding` follows them) never shows its own view, so for each one the person edits the panel
+starts with a "Share all of {space}" row that turns it to that Space's sharing, with a way back. The
+panel's adoption and caught-error measurement contract lives in `portal/src/lib/spaceShareAnalytics.ts`;
+those terminal UI attempts are distinct from the committed, receipt-deduplicated outcomes in
+`server/lib/space_analytics.py`. New panel series begin at their verified production cutover; earlier
+use is unknown, not reconstructed from backend changes. Any other record-param Site (a
+`ShareControl`, or a page shown in another Space's view) is managed from that record's Share popover.
 
 The parts:
 
-- **Portal `/site`** only hands the address over: a head script in the root layout takes the bearer
-  out of the Portal address before analytics or the Portal app start, derives the key with
-  WebCrypto and leaves for the Site's own link on the Site origin (same view query).
-  `portal/src/app/site/SiteHandoff.tsx` covers Portal-internal navigations, Desktop (system
-  browser) and a missing origin or WebCrypto (the page says the link is unavailable). It never
-  imports the Site host, `AppViewRenderer` or the bundle loader (`portal/src/app/site/page.test.ts`).
-  Existing `{portal}/site#<bearer>` links keep working this way.
-- **Site host**: the Portal codebase built with `NOTIS_PORTAL_TARGET=site` (`npm run dev:site`,
-  `build:site`, `start:site`; distDir `.next-site*`). Only `*.site.tsx` routes exist there
-  (`portal/src/app/s/[key]/page.site.tsx` for links and `portal/src/app/site/page.site.tsx` for
-  open views, both `portal/src/site/SpaceSiteHost.tsx`, under the root layout
-  `portal/src/app/layout.site.tsx`): no Portal API routes, middleware, rewrites, analytics,
-  third-party tags or Desktop code. Its Supabase client never stores a session, and it calls the API
-  at `NEXT_PUBLIC_SERVER_URL`. It runs a Site only when the page origin equals its build-time
-  `NEXT_PUBLIC_SITES_URL`, never on a hosting alias such as a `*.vercel.app` address. Every
-  response sends `frame-ancestors 'none'`, `base-uri 'none'`, `worker-src blob:` (no Service
-  Worker can sit in front of other Sites), `X-Frame-Options: DENY`,
-  `Cross-Origin-Opener-Policy: same-origin`, `Referrer-Policy: no-referrer` and `nosniff`.
-- **API**: `SiteOriginMiddleware` runs before every other middleware (`server/main.py` registers it
-  last; `server/tests/test_space_site_origin.py` checks the real app). It answers the Site origin
-  only for `POST` on the Site routes (`site-open`, `get`, `children`, `records`, `presentation`,
-  `navigate`, `action`, `data`, `schema`, `record-view`, `shown`), with CORS for that origin, no
-  credentials, and Authorization and Cookie removed before any other middleware sees them. Any
-  other HTTP request from it is `403 site_origin_forbidden`, even where the development CORS
-  pattern matches, and every WebSocket handshake from it is refused (close code 1008). The Spaces
-  handler also refuses a Site-origin request without its Site token (`site_operation_unavailable`).
-  From the Portal origin, Site reads still work, anonymously, only with the token.
-- **Local development**: a `dev.sh` stack that starts the Portal also serves the Site host on
-  `http://127.0.0.1:<PORTAL_PORT - 20000>` (another host than the `localhost` Portal, so not even
-  host-only cookies are shared) and sets `DOMAIN_SITES` and `NEXT_PUBLIC_SITES_URL` to it. A
-  headless stack starts no Site host and gives the backend an empty `DOMAIN_SITES`, so it issues no
-  Site links. That loopback pair is accepted only in development: the backend runs with `ENV=dev`
-  and the default stack serves development builds. A `PORTAL_MODE=prod` stack builds production
-  bundles, which refuse it wherever they compare a loopback address: a Portal with a loopback
-  `NEXT_PUBLIC_APP_URL` or `NEXT_PUBLIC_SERVER_URL` hands no Site over, and a Site host with a
-  loopback `NEXT_PUBLIC_APP_URL` runs none, while the backend still issues Site links.
+- **Site host**: the Portal codebase built with `NOTIS_PORTAL_TARGET=site` (`npm run dev:site` on
+  `.next-site-dev`; `npm run build:site`, a static export in `portal/.next-site`). Only `*.site.tsx`
+  routes exist there: one page, `portal/src/app/page.site.tsx` (`portal/src/site/SpaceSiteHost.tsx`
+  under the root layout `portal/src/app/layout.site.tsx`), which every path of every Site address
+  serves. It has no Portal API routes, middleware, rewrites, analytics, third-party tags or Desktop
+  code, and its Supabase client never stores a session. It opens the Site with `site-open`, which
+  takes no token: the API knows the Site from the page's origin and answers with the Space, the
+  Site's token (kept in memory only, never in the address or in storage), its title and whether it
+  shows the Made with Notis badge. Views live in the query (`/?space=&record=&selection=`, any path),
+  so an open view's address can be copied and shared. A renamed Site answers `site_moved`, and the
+  page moves to the new address with the same path and query (`portal/src/site/siteLocation.ts`); an
+  unpublished one says it isn't published. It refuses to run on, or beside, a Notis app or API host
+  (`siteHostAllowed` in `portal/src/lib/siteOrigin.ts`, the API's rule from the browser side). It
+  calls the API that its document names in `<meta name="notis-api">`, which the Worker writes, else
+  `NEXT_PUBLIC_SERVER_URL` (`next dev`), so one export serves beta and production. Its security
+  headers (`portal/site-security-headers.json`, among them `frame-ancestors 'none'` and
+  `worker-src blob:`, so no Service Worker can sit in front of a Site) come from `next dev` locally
+  and from the Worker otherwise. Site bundles get React as frozen copies on non-writable `window`
+  properties (`portal/src/site/SiteReactGlobals.tsx`, `portal/src/site/frozenGlobals.ts`), loaded
+  bundles stay in a module-scoped cache instead of `window.__appBundleCache`, and the Portal's bundle
+  source preload global is ignored (`portal/src/lib/appBundleLoader.ts`).
+- **notis.space Worker** (`sites-worker/`): serves that export on every Site host. It asks the API
+  what a host is (`POST /portal_spaces/site-head`, server to server, reused for a minute) and answers
+  with a redirect, the document with that Site's head tags, its robots.txt and sitemap, or a file of
+  the export ([Sites hosting](sites-hosting.md#the-worker)).
+- **API**: `SiteOriginMiddleware` (`server/lib/space_site_origin.py`) runs before every other
+  middleware (`server/main.py` registers it last; `server/tests/test_space_site_origin.py` checks the
+  real app). A request whose Origin is a Site host reaches only the anonymous Site routes, as `POST`,
+  with CORS for that origin, no credentials, and Authorization and Cookie removed before any other
+  middleware sees them. Anything else from it is `403 site_origin_forbidden`, and every WebSocket
+  handshake from it is refused (close code 1008).
+- **Local development**: a `dev.sh` stack that starts the Portal also starts the Site host and gives
+  the backend `DOMAIN_SITES=http://localhost:<SITES_PORT>`, so its Sites open at
+  `http://<name>.localhost:<SITES_PORT>` (the port: [development workflow](development-workflow.md)).
+  `PORTAL_MODE=prod` serves the export through the Worker (`wrangler dev --env dev`) instead of
+  `next dev`. A headless stack starts no Site host and gives the backend an empty `DOMAIN_SITES`, so
+  it issues no Site addresses. `*.localhost` Site hosts pair with the `localhost` Portal only in
+  development (`ENV=dev`).
 
-Remaining risk, which per-Site origins (a wildcard domain on the Public Suffix List) would remove:
-
-- Sites share the origin's storage: one Site's code can read and change what another Site's code
-  stored there (localStorage, IndexedDB, Cache Storage, cookies).
-- A Site can list the addresses of other Sites' views opened earlier in the same tab (Space and
-  record ids and the view selection, never a bearer or a key).
-- A Site link whose page was left before its first script ran keeps the bearer in that history
-  entry's URL. A Site opened later in the same tab can read it through the Navigation API, unless
-  the link was opened with a `no-referrer` policy (the Portal's browser handoff and links between
-  Sites are).
-- The API's credentialed CORS patterns (`server/lib/api_cors.py`) still match origins other than
-  the configured Site origin: `localhost`, `127.0.0.1`, `*.ngrok-free.app` and `*.vercel.app` names
-  in the shapes of the `notis-portal` project on team `mind-the-flo`, which the Portal's previews
-  use against the Beta API: `notis-portal-mind-the-flo.vercel.app`, commit URLs
-  `notis-portal-<9-character hash>-mind-the-flo.vercel.app` and branch URLs
-  `notis-portal-git-<branch>-mind-the-flo.vercel.app`, including Vercel's shortened form for a
-  long branch (`-git-<cut branch>-<6 hex>-`, which may contain `--`). The pattern matches names,
-  not hosts proven to be ours: `<name>.vercel.app` goes to whoever deploys a project of that name
-  first, so a project named in one of these shapes elsewhere would match too. The bare
-  `notis-portal.vercel.app` (no project of ours) and author URLs
-  (`notis-portal-<member>-mind-the-flo.vercel.app`, unused by the previews) are refused; a member
-  name of exactly 9 letters or digits has the commit URL shape and is answered. Every other
-  `*.vercel.app` name is refused, so the Site host project, which is never named with the
-  `notis-portal` prefix (for example `notis-sites`), gets no credentialed CORS on any of its
-  hosts. That exposes nothing while the API authenticates only with the Authorization
-  header; a cookie-based API credential would need the local and tunnel patterns narrowed first.
-  The production Site host keeps its `*.vercel.app` URLs behind Vercel Deployment Protection so
-  only its own domain serves it.
+Remaining risk: until `notis.space` is in the Public Suffix List's private section
+([Sites hosting](sites-hosting.md#public-suffix-list)), every `<name>.notis.space` Site shares one
+registrable domain with the others. A Site page can set a cookie for `notis.space` that every other
+Site's requests carry, and Sites are same-site for each other (SameSite cookies, Fetch Metadata). No
+Site session or token lives in a cookie, so that reaches nothing; keep it that way. Each Site keeps
+its own origin-scoped storage (localStorage, IndexedDB, Cache Storage, Service Workers), and a
+connected domain is a site of its own.
 
 ### Selected Space source verification during the cutover
 
@@ -1152,8 +1096,9 @@ export default defineSpace({
 - `params`: `record`, `enum` (with `values`), `text`, `number`, `date` (`YYYY-MM-DD`)
   or `boolean`, each with a `description`, optional `required` and a type-checked
   `default` (never for record params). A record param names a declared database
-  resource; `main: true` makes this view that database's main view (one per database)
-  and `slugProperty` names the property that makes the record slug. `record`,
+  resource; `main: true` makes this view that database's main view (one per database),
+  `slugProperty` names the property that makes the record slug and `page` opens
+  matching records full screen ([Record pages](#record-pages-page)). `record`,
   `assistantThread` and credential-like names (`jwt`, `code`, `state`, `key`, or
   containing token, secret, password, credential, session, auth or api key) are
   refused; the Portal drops those names from Space links. `selection` is an ordinary
@@ -1181,8 +1126,9 @@ a presentation always carries `path`, `description` and `memory`);
 `server/lib/space_view_manifest.py` re-validates every release, Store package and
 copied source (Store installs and Keep a copy), and
 `_validate_bindings` checks properties against the linked schemas. The runtime
-descriptor carries `params`, `shows` (list names with `database`/`open` and the `params`
-names the list's filter reads, or `about`; never filters) and `chrome`.
+descriptor carries `params` (never a record param's `page` rule), `shows` (list names with
+`database`/`open` and the `params` names the list's filter reads, or `about`; never filters)
+and `chrome`.
 
 In source, `useViewParams<typeof definition>()` returns the declared params typed
 from the URL (invalid values fall back to their default and are listed in `invalid`;
@@ -1254,6 +1200,54 @@ Space link: move it with one add plus one remove, or delete it. Every revision
 is checked, a stale one fails with nothing changed, and a retry with the same
 `request_id` returns the original result. When a content edit and a link change
 are sent together, the tool result states exactly which part was applied.
+
+#### Record pages (`page`)
+
+A record param may declare `page: { where }`: a record of that param matching `where` that is a saved HTML page or
+a report opens as its own full-screen page instead of the view. Notes declares it on `note`:
+
+```ts
+note: { type: 'record', database: 'notes', main: true, description: 'The note to open.',
+  page: { where: { or: [
+    { field: { column: 'content_type' }, op: 'equals', value: 'view' },
+    { and: [ { field: { column: 'content_type' }, op: 'not_equals', value: 'file' },
+      { or: [ { field: { property: 'Type' }, op: 'equals', value: 'HTML page' },
+              { field: { property: 'Type' }, op: 'equals', value: 'Report' } ] } ] } ] } } },
+```
+
+`page` holds exactly `where`, only on an optional `record` param (never `required: true`: Back opens the same view
+without it), at most one per view. `where` is the native filter of
+`shows` (leaves and `and`/`or` groups) with fixed values only, never `{param}` placeholders, over this subset:
+
+| Field | Ops |
+|---|---|
+| columns `record_key`, `id` | `equals`, `not_equals`, `in` |
+| columns `content_type`, `file_type`, `title` | `equals`, `not_equals`, `is_empty`, `is_not_empty` |
+| select and status properties | `equals`, `not_equals`, `is_empty`, `is_not_empty` |
+| checkbox properties | `equals`, `not_equals` |
+
+`spaces build` checks the shape (and property kinds when the database is created in the same release);
+`server/lib/space_view_manifest.py` re-validates every release and `validate_view_bindings` refuses an unknown
+property or a wrong kind in the bound schema. A matching record becomes a page only when
+`page_kind` (`server/lib/space_record_page.py`) finds an HTML page (`view_type: 'html'` with inline
+`notis-html/v1` HTML, or exactly one eligible `.html`/`.htm` file, the `HtmlFrame` rule) or a valid report
+(`view_type: 'report'`); text notes and records with two HTML files stay in the view.
+
+- Portal, Editors only: `resolve-view` and `open` attempt the page for a signed-in Editor of the Space outside
+  previews (the record UI gate). The answer gains `page` (`kind`, `param`, `main`, `record_key`, `revision`,
+  `view_revision`, `title`, `exit_link`, `exit_label`, then `html` or `report`, or `error`: `record_changed`,
+  `page_unavailable`), released only after the record's revision, view revision and binding are rechecked; a
+  downloaded file or built report is also released only if the Editor gate, read again beside it, still admits
+  the reader with the same cache scope (else no page). An `open` page answer carries no landing. The Portal (`SpaceRecordFullPage`) shows only the page, with
+  no Portal or Space chrome, plus a floating Back to `exit_link` (the same view and params without the page
+  param) and Share for HTML pages. Viewers and previews get no `page` and see the view as before, so keep the
+  view's own HTML and report rendering (`HtmlFrame`, `ReportFrame`) for them.
+- Sites, HTML only: for a record Site of a matching HTML page, `site-open` adds
+  `page: { kind: 'html', title, html, record_key, revision }`, read through the Site's own admitted read, and the
+  Site host shows that HTML alone, full screen, without loading the view. Reports, whole-Space Sites, text notes
+  and views without `page` keep their Site behavior ([Document page](#document-page-documentpage)).
+- `where` never leaves the server: runtime descriptors, presentation answers and resolve, open and Site answers
+  omit it. It only chooses how an authorized record is shown; access never depends on it.
 
 #### View links, main views and agent discovery
 
@@ -2412,7 +2406,8 @@ icon, cover and properties share one save queue that saves 1.5 s after the last 
 on leave); the page is read only until the live room has synced, as on Beta. The toolbar's visible status stays
 Saving, Saved or Read only; joining or reconnecting the live room is an icon with its own label in a fixed slot.
 Files open in their viewer under the header; HTML and reports show only the toolbar (breadcrumb, `actions`, Share,
-'...' menu) above their frame. Archived and non-writable records get the same page read only, with no live
+'...' menu) above their frame (a record param's `page` rule opens them full screen before the view renders, see
+[Record pages](#record-pages-page)). Archived and non-writable records get the same page read only, with no live
 session. The record UI read requires a signed-in Editor (`space_record_ui._execution`), so a Viewer of the Space
 gets the page's error state, not a read-only page, and Sites use their pinned record view.
 
@@ -2476,10 +2471,11 @@ the trailer retain the ordered post-commit sync response, so Portal and sidecar 
 `HtmlFrame` also accepts `html` for content returned by a declared action. Its opaque-origin sandbox never adds
 `allow-same-origin`, and its viewer policy can only tighten the inherited Portal/Site CSP. Record Sites may display
 their server-pinned record's native body, properties and HTML through an exact saved canonical native
-query action. `DocumentEditor` is a read-only snapshot there: no session JWT, collaboration room, uploads, metadata
-writes or sharing controls. The server supplies the record param and saved typed params; browser query/selection
-values cannot replace them. Site `useShown` evaluates the declared filter through that saved read grant and record
-scope, never Editor or generic database authority. `ShareControl` uses private/shared, copy-link and revoke behavior
+query action (an HTML page matching its param's `page` rule comes in the `site-open` answer instead, see
+[Record pages](#record-pages-page)). `DocumentEditor` is a read-only snapshot there: no session JWT,
+collaboration room, uploads, metadata writes or sharing controls. The server supplies the record param and saved
+typed params; browser query/selection values cannot replace them. Site `useShown` evaluates the declared filter
+through that saved read grant and record scope, never Editor or generic database authority. `ShareControl` uses private/shared, copy-link and revoke behavior
 for signed-in Editors. Anonymous native file/report viewers remain unavailable until they have exact pinned adapters.
 
 A record Site may select any declared record param, including a noncollection param. The host's Site request carries
