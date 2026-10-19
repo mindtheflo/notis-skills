@@ -472,6 +472,9 @@ automation, and turning a Site off revokes it at once.
   remaining owned files through the Storage API, rechecks the inventory, and
   only then deletes the login. The same cleanup runs during recovery. Never
   delete Storage metadata directly: that leaves the underlying bytes behind.
+  This service-only RPC has a 60-second function-level `statement_timeout`;
+  PostgREST hoists it for this call without changing other API query limits.
+  Reload the PostgREST schema cache after changing that function setting.
 
 - **Space Store** (`server/lib/space_store.py`, `store-*` operations,
   `notis spaces store ...`): any current Editor publishes a Space with its
