@@ -5,9 +5,13 @@ Repo-maintained skills are zipped from server/skills/<name>/.
 Anthropics skills (docx, pdf, pptx, xlsx) are cloned to temp and zipped from there.
 
 Usage:
-  python server/skills/sync_notis_skills.py sync [skill ...] --channel dev|beta|production
+  python server/skills/sync_notis_skills.py sync [skill ...] --channel beta|production
+  python server/skills/sync_notis_skills.py recorded --channel beta|production --json
 
-Requires: OPENAI_API_KEY; SUPABASE_SUBDOMAIN, SUPABASE_SERVICE_KEY (or --skill-ids).
+sync requires OPENAI_API_KEY and SUPABASE_SUBDOMAIN, SUPABASE_SERVICE_KEY (or --skill-ids).
+recorded prints the commit each published skill was last published from on a channel; it
+needs only SUPABASE_SUBDOMAIN and SUPABASE_SERVICE_KEY. There is no dev channel: the local
+dev stack reads beta's skills.
 """
 
 from __future__ import annotations
@@ -70,6 +74,11 @@ DEFAULT_OUR_SKILLS = {
 }
 ANTHROPICS_SKILL_NAMES = ["docx", "pdf", "pptx", "xlsx"]
 ANTHROPICS_REPO_URL = "https://github.com/anthropics/skills.git"
+# Without git (a Render job has none) the anthropics skills come from this fixed
+# upstream commit instead of a clone, so a run never reads files nobody reviewed.
+ANTHROPICS_TARBALL_SHA = "dbd4588f9e1033efb41dad4bef2f7947c8993d44"
+ANTHROPICS_TARBALL_URL = "https://codeload.github.com/anthropics/skills/tar.gz/{sha}"
+ANTHROPICS_TARBALL_MAX_BYTES = 128 * 1024 * 1024
 
 
 NOTIS_SKILL_CREATOR_NAME = "notis-skill-creator"
@@ -297,6 +306,51 @@ def fetch_curated_skills(supabase, skill_names: list[str] | None, channel: str |
     return normalized_rows
 
 
+def recorded_source_shas(supabase, channel: str) -> dict[str, str | None]:
+    """Return {repo skill name: commit it was last published from on this channel}.
+
+    Only published repo-maintained skills are listed. A missing or malformed commit, or
+    two rows for one renamed skill that disagree, reads as None: unknown, so it publishes.
+    """
+    field = get_curated_skill_channel_field("openai_skill_source_sha", channel)
+    recorded: dict[str, str | None] = {}
+    for row in fetch_curated_skills(supabase, None, channel):
+        name = row["name"]
+        if name not in OUR_SKILLS:
+            continue
+        value = row.get(field)
+        value = value if isinstance(value, str) and _COMMIT_SHA.match(value) else None
+        if name in recorded and recorded[name] != value:
+            value = None
+        recorded[name] = value
+    return recorded
+
+
+def run_recorded(channel: str, json_output: bool) -> int:
+    """Print the commit each published repo skill was last published from on a channel."""
+    if channel not in CURATED_SKILL_CHANNELS:
+        print(f"Error: unsupported channel '{channel}'", file=sys.stderr)
+        return 1
+    subdomain = os.getenv("SUPABASE_SUBDOMAIN")
+    service_key = os.getenv("SUPABASE_SERVICE_KEY")
+    if not subdomain or not service_key:
+        print("Error: SUPABASE_SUBDOMAIN and SUPABASE_SERVICE_KEY are required", file=sys.stderr)
+        return 1
+    try:
+        from supabase import create_client
+
+        recorded = recorded_source_shas(create_client(f"https://{subdomain}.supabase.co", service_key), channel)
+    except Exception as error:  # Never echo the client error: it can carry the project address.
+        print(f"Error: could not read the published skills ({type(error).__name__})", file=sys.stderr)
+        return 1
+    if json_output:
+        print(json.dumps({"channel": channel, "recorded": recorded}, sort_keys=True))
+    else:
+        for name, sha in sorted(recorded.items()):
+            print(f"  {name}: {sha or 'unknown'}")
+    return 0
+
+
 def fetch_curated_skills_any(supabase, skill_names: list[str]) -> dict[str, dict]:
     """Return curated_skills rows by name (including null openai_skill_id). Returns {name: row}."""
     result = supabase.table("curated_skills").select("id, name, openai_skill_id, description, category, sort_order").execute()
@@ -447,6 +501,72 @@ def skill_dir_unchanged_since(skill_path: str, recorded_sha: str | None, source_
     return diff.returncode == 0
 
 
+def git_work_tree_available(path: str) -> bool:
+    """True when git can answer history questions about path.
+
+    A Render job has neither git nor history, so --skip-unchanged cannot be proven
+    there: the caller passes the exact skill list instead.
+    """
+    if shutil.which("git") is None:
+        return False
+    try:
+        inside = subprocess.run(
+            ["git", "-C", path, "rev-parse", "--is-inside-work-tree"],
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return False
+    return inside.returncode == 0 and inside.stdout.strip() == "true"
+
+
+def download_anthropics_tarball(sha: str = ANTHROPICS_TARBALL_SHA) -> str:
+    """Unpack the pinned anthropics/skills tarball into a temp dir. Returns the repo root.
+
+    Only plain files and folders are unpacked, each inside the temp dir; links and
+    special entries are dropped and any path that escapes the folder is refused.
+    """
+    import tarfile
+    import urllib.request
+
+    if not _COMMIT_SHA.match(sha):
+        raise ValueError("The pinned anthropics/skills commit must be a 40-character SHA")
+    root = tempfile.mkdtemp(prefix="anthropics_skills_")
+    try:
+        with tempfile.TemporaryFile() as archive:
+            with urllib.request.urlopen(ANTHROPICS_TARBALL_URL.format(sha=sha), timeout=120) as response:
+                size = 0
+                while chunk := response.read(1 << 20):
+                    size += len(chunk)
+                    if size > ANTHROPICS_TARBALL_MAX_BYTES:
+                        raise RuntimeError("The anthropics/skills tarball is larger than expected")
+                    archive.write(chunk)
+            archive.seek(0)
+            with tarfile.open(fileobj=archive, mode="r:gz") as tar:
+                for member in tar.getmembers():
+                    # GitHub wraps the tree in one top-level folder: drop it.
+                    _, _, inner = member.name.partition("/")
+                    if not inner.strip("/"):
+                        continue
+                    relative = os.path.normpath(inner)
+                    if os.path.isabs(relative) or relative == ".." or relative.startswith(".." + os.sep):
+                        raise RuntimeError(f"Unsafe path in the anthropics/skills tarball: {member.name}")
+                    target = os.path.join(root, relative)
+                    if member.isdir():
+                        os.makedirs(target, exist_ok=True)
+                    elif member.isfile():
+                        os.makedirs(os.path.dirname(target), exist_ok=True)
+                        source = tar.extractfile(member)
+                        if source is None:
+                            continue
+                        with source, open(target, "wb") as handle:
+                            shutil.copyfileobj(source, handle)
+        return root
+    except BaseException:
+        shutil.rmtree(root, ignore_errors=True)
+        raise
+
+
 def clone_repo_to_temp(repo_url: str, prefix: str = "skills_") -> str:
     """Shallow clone a git repo. Returns path to repo root."""
     tmp = tempfile.mkdtemp(prefix=prefix)
@@ -459,7 +579,12 @@ def clone_repo_to_temp(repo_url: str, prefix: str = "skills_") -> str:
 
 
 def clone_anthropics_to_temp() -> str:
-    """Shallow clone anthropics/skills. Returns path to repo root (contains skills/)."""
+    """Copy anthropics/skills to a temp dir. Returns path to repo root (contains skills/).
+
+    A shallow clone when git exists; otherwise the pinned tarball.
+    """
+    if shutil.which("git") is None:
+        return download_anthropics_tarball()
     return clone_repo_to_temp(ANTHROPICS_REPO_URL, "anthropics_skills_")
 
 
@@ -497,6 +622,12 @@ async def run_sync(
 
     if channel not in CURATED_SKILL_CHANNELS:
         print(f"Error: unsupported channel '{channel}'", file=sys.stderr)
+        return 1
+
+    if skip_unchanged and not git_work_tree_available(get_skills_dir(skills_dir)):
+        # Without history nothing proves a skill unchanged, and a guess would either
+        # skip a real change or republish every skill. Pass the exact list instead.
+        print("Error: --skip-unchanged needs git and a work tree; pass the exact skill list instead", file=sys.stderr)
         return 1
 
     if skill_names:
@@ -665,7 +796,7 @@ async def run_sync(
                         "required_feature_flag": stored_curated_skill_feature_flag(required_feature_flag),
                         "required_entitlements": required_entitlements,
                         # Base skill_md is NOT NULL; seed it on every channel so a
-                        # brand-new skill can be bootstrapped dev/beta-only (without
+                        # brand-new skill can be bootstrapped beta-only (without
                         # this, a first-time non-production bootstrap fails). For
                         # --channel production this is redundant with the mirror.
                         "skill_md": skill_md or "",
@@ -744,7 +875,15 @@ def main() -> int:
         action="store_true",
         help="Create skills in OpenAI and insert/update curated_skills when openai_skill_id is missing",
     )
+    recorded_parser = subparsers.add_parser(
+        "recorded",
+        help="Print the commit each published skill was last published from on a channel (read-only)",
+    )
+    recorded_parser.add_argument("--channel", choices=CURATED_SKILL_CHANNELS, required=True)
+    recorded_parser.add_argument("--json", action="store_true", help="Output JSON")
     args = parser.parse_args()
+    if args.command == "recorded":
+        return run_recorded(args.channel, args.json)
     if args.command != "sync":
         return 0
     return asyncio.run(

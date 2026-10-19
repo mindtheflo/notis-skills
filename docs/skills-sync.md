@@ -5,7 +5,7 @@ This is the canonical reference for Notis skill sync mechanics.
 Use this doc when the work is about:
 
 - publishing repo-maintained skills from `server/skills` to OpenAI and `curated_skills`
-- understanding channel-specific curated skill metadata for dev, beta, and production
+- understanding channel-specific curated skill metadata for beta and production
 - debugging CLI-owned sync between Portal-managed skills and local agent folders
 - changing how local skills are pushed, pulled, written, deleted, or symlinked
 
@@ -49,19 +49,23 @@ Repo-maintained product skills live in `server/skills/<name>/` with `SKILL.md` a
 The publishing CLI is:
 
 ```bash
-python3 server/skills/sync_notis_skills.py sync [skill ...] --channel dev|beta|production
+python3 server/skills/sync_notis_skills.py sync [skill ...] --channel beta|production
+python3 server/skills/sync_notis_skills.py recorded --channel beta|production --json
 ```
 
 Required environment:
 
-- `OPENAI_API_KEY`
+- `OPENAI_API_KEY` (for `sync`)
 - `SUPABASE_SUBDOMAIN` and `SUPABASE_SERVICE_KEY`, unless `--skill-ids` is used
+
+`recorded` only reads: it prints the commit each published skill was last published from on that channel, and needs just the two Supabase values. The release uses it to work out which skills changed ([Automated Sync](#automated-sync)).
 
 Important flags:
 
-- `--channel dev|beta|production` chooses which channel-specific fields are updated. A run only ever writes the fields for the one channel you pass (production also mirrors the legacy base fields — see [Channel Fields](#channel-fields)).
-- `--bootstrap` creates missing OpenAI skills and inserts or updates `curated_skills` rows when `openai_skill_id` is missing. **Required for the first publish of a brand-new skill** (which has no `curated_skills` row yet); after that, plain `sync` versions the existing skill. Bootstrap works on any channel — the insert seeds the `NOT NULL` base `skill_md` so a first publish can go straight to `dev` or `beta` without touching production. **CI never bootstraps** (see [Automated Sync](#automated-sync-github-actions)).
-- `--from claude` includes the upstream document skills from `anthropics/skills`: `docx`, `pdf`, `pptx`, and `xlsx`.
+- `--channel beta|production` chooses which channel-specific fields are updated. A run only ever writes the fields for the one channel you pass (production also mirrors the legacy base fields, see [Channel Fields](#channel-fields)). There is no dev channel: the local dev stack reads beta's skills.
+- `--bootstrap` creates missing OpenAI skills and inserts or updates `curated_skills` rows when `openai_skill_id` is missing. **Required for the first publish of a brand-new skill** (which has no `curated_skills` row yet); after that, plain `sync` versions the existing skill. Bootstrap works on either channel: the insert seeds the `NOT NULL` base `skill_md`, so a first publish can go straight to `beta` without touching production. **The release never bootstraps** (see [Automated Sync](#automated-sync)).
+- `--from claude` includes the upstream document skills from `anthropics/skills`: `docx`, `pdf`, `pptx`, and `xlsx`. Where git is missing (a Render job), they come from a pinned tarball of that repository (`ANTHROPICS_TARBALL_SHA` in the script) instead of a clone. The release does not publish them.
+- `--skip-unchanged` skips a skill whose folder is unchanged since the commit recorded for the channel. It needs git and a work tree, so it refuses to run without them; the release never passes it and publishes the exact list Depot computed instead.
 - `--skill-ids name:skill_id,...` syncs against explicit OpenAI skill ids without querying Supabase.
 - `--source-sha <sha>` records the source commit alongside the channel sync metadata.
 - `--dry-run` builds the intended sync plan without writing to OpenAI or Supabase.
@@ -114,7 +118,7 @@ Production sync also mirrors the legacy base fields:
 
 Runtime resolution (`resolve_curated_skill_channel`) picks the channel:
 
-- `dev` when the server is running in a development environment
+- `beta` when the server is running in a development environment (the local dev stack has no channel of its own)
 - `beta` for beta users
 - `production` otherwise
 
@@ -143,27 +147,32 @@ When bootstrapping a missing curated skill, the script:
 
 For upstream `skill-creator`, the sync script renames it to `notis-skill-creator` and adapts the upstream packaging instructions to the Notis create-skill flow.
 
-### Automated Sync (Depot CI)
+### Automated Sync
 
-`.depot/workflows/sync-curated-skills.yml` runs the publishing CLI in CI. It **never passes `--bootstrap`**, so it only versions skills that already exist in `curated_skills` (a brand-new skill must be bootstrapped manually once first).
+Curated skills publish after each release, never on a push of their own. Once `.depot/workflows/temporal-release.yml` has made a merged commit live on `beta` or `production` (only while that environment's Depot release flag is on), its `post-release` job runs `scripts/render_post_release_jobs.py`, which starts Render one-off jobs on that environment's Temporal worker. A job runs the worker's latest build with the keys Render already holds, so Depot keeps only the Render key:
 
-Repo skills are discovered from each channel's exact source tree. Every relevant push reconciles that tree's full skill inventory, so queued pushes cannot lose an earlier skill change. A newer branch head is accepted only when its skill inputs are unchanged; otherwise the newer queued run owns publication. Manual inputs still select a bounded subset. See [Depot rollout](depot-ci-rollout.md) for activation and read-only rehearsals.
+1. A `read` job runs `recorded` for the channel.
+2. Depot compares each recorded commit with the released one in git (Render builds carry no history) and keeps the skills whose `server/skills/<name>/` folder changed. An unknown or unreachable recorded commit counts as changed, and a skill a newer release already published is never taken back to an older version.
+3. A `publish` job checks it runs the released commit (`RENDER_GIT_COMMIT`), runs `sync <names> --channel <environment> --source-sha <commit>`, then syncs the voice prompts. When a newer merge already replaced the build, the job skips and that merge's own run publishes.
 
-The sync job installs the full `server/requirements.txt`: frontmatter validation imports the server entitlement catalog, which pulls in the billing stack. Its sync step runs under an explicit `bash` shell (pipefail), so a crash before `tee` fails the run. From August to October 2026 the job installed only three packages, the script crashed on that import, and the default shell hid the crash, so runs passed while syncing nothing; after a long gap, compare `curated_skills.openai_skill_version_<channel>` with the run history instead of trusting a green run.
+The release run shows one line for skills and one for voice: published, unchanged, skipped or failed. A failure turns its own line red while the release stays green, and the next release (or a catch-up) publishes what it missed, because the comparison always starts from what the channel last recorded.
+
+The release only versions skills that already have a `curated_skills` row. It never passes `--bootstrap` (bootstrap a brand-new skill by hand once, see the flags above) or `--skip-unchanged`, and it does not publish the upstream `anthropics/skills` skills.
+
+`.depot/workflows/post-release-catch-up.yml` ("catch up now") is the one manual run that publishes: it does the same for the commit an environment serves right now, and refuses a release that is still deploying or a worker build newer than the live release. `.depot/workflows/sync-curated-skills.yml` is only a read-only preview: it validates the selected skills at an exact commit, holds no credentials and contacts neither OpenAI nor Supabase. See [Depot rollout](depot-ci-rollout.md#post-release-cutover-and-key-removal) for the cutover and its proof run.
+
+Frontmatter validation imports the server entitlement catalog, which pulls in the billing stack, so the sync needs the full server requirements; the Temporal worker build installs them. From August to October 2026 the CI sync job installed only three packages, the script crashed on that import, and the default shell hid the crash, so runs passed while syncing nothing. After a long gap, compare `curated_skills.openai_skill_version_<channel>` with the release history instead of trusting a green run.
 
 Channel is determined by trigger:
 
-| Trigger | Channel(s) | Source content |
+| Trigger | Channel | Source content |
 | --- | --- | --- |
-| Push to `beta` (paths under `server/skills/**`) | `beta` | `beta` branch head |
-| Push to `production` (same path filter) | `production` | `production` branch head |
-| Manual dispatch, `target_channel: dev` | `dev` | **the branch the dispatch is run from** |
-| Manual dispatch, `beta` / `production` | that channel | that channel's branch head |
-| Manual dispatch, `all` | `beta` + `production` (never `dev`) | each branch head |
+| Release of a merge to `beta` | `beta` | the released commit |
+| Release of a merge to `production` | `production` | the released commit |
+| Catch up now, `environment: beta` or `production` | that channel | the commit that environment serves |
+| Preview (`sync-curated-skills.yml`) | none, read only | a branch head or an exact commit |
 
-`dev` is **manual-only** — it is never reachable from a push and is excluded from `all`. Use it to publish the version you are iterating on to the dev channel (resolved only by the dev backend) from a feature branch, without touching beta or production. A manual `dev` run must specify which skills via the `skills` input (or `force`), since there is no push diff to infer from.
-
-So the normal promotion path is: publish to `dev` manually while working → merge to `beta` (auto-syncs the beta channel) → merge to `production` (auto-syncs the production channel).
+So the normal promotion path is: check the change with `--dry-run` or the preview, merge to `beta` (its release publishes the beta channel), then merge to `production` (its release publishes the production channel).
 
 ### Publishing Verification
 
@@ -260,10 +269,19 @@ the fingerprint; failed writes are never cached. External source URLs remain
 rechecked rather than caching a potentially incomplete markdown fallback.
 
 The CLI also owns three base skills: `notis-apps`, `notis-query`, and
-`notis-cli`. Every CLI launch refreshes their canonical copies under
-`~/.notis/skills/base/` from the package and links all three into the supported
-agent roots. They do not participate in account sync, feature-flag filtering,
-target selection, cloud deletion, or the automatic-sync preference.
+`notis-cli`. The npm package and the Desktop build both ship them, and every CLI
+launch and Desktop refresh reconciles their canonical copies under
+`~/.notis/skills/base/` and links all three into the supported agent roots.
+The newest copy wins: each shipped folder carries `.notis-base-skill.json`, whose
+`stamp` is the commit time of the newest commit that changed that skill (merges
+included, so a promotion counts). A shipped copy replaces the installed one only
+when it is newer, when the installed copy has no stamp, or when both are the
+same version and the installed files changed since. A source checkout has no
+stamps and replaces the installed copy whenever their files differ. Stamping
+reads the whole git history, so a shallow clone fails the build rather than
+stamping a wrong time; every build checkout fetches full history. Base skills do
+not participate in account sync, feature-flag filtering, target selection, cloud
+deletion, or the automatic-sync preference.
 
 Base and account reconciliation share one atomic filesystem lock under
 `~/.notis/skills/`. It serializes Desktop refreshes with manual CLI syncs,
