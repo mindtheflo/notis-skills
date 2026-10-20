@@ -568,7 +568,7 @@ The parts:
   headers (`portal/site-security-headers.json`, among them `frame-ancestors 'none'` and
   `worker-src blob:`, so no Service Worker can sit in front of a Site) come from `next dev` locally
   and from the Worker otherwise. Site bundles get React as frozen copies on non-writable `window`
-  properties (`portal/src/site/SiteReactGlobals.tsx`, `portal/src/site/frozenGlobals.ts`), loaded
+  properties (`portal/src/site/SiteHostGlobals.tsx`, `portal/src/site/frozenGlobals.ts`), loaded
   bundles stay in a module-scoped cache instead of `window.__appBundleCache`, and the Portal's bundle
   source preload global is ignored (`portal/src/lib/appBundleLoader.ts`).
 - **notis.space Worker** (`sites-worker/`): serves that export on every Site host. It asks the API
@@ -1133,7 +1133,13 @@ and `chrome`.
 In source, `useViewParams<typeof definition>()` returns the declared params typed
 from the URL (invalid values fall back to their default and are listed in `invalid`;
 unknown params such as `?foo=` never reach the view; required ones missing are in
-`missing`). `useShown(name, {sorts?, pageSize?, offset?, includeContent?})` runs
+`missing`). Its `setParams(changes, { replace? })` changes the view's own params: names
+left out keep their value and `null` removes one. The runtime call is
+`navigate({ kind: 'view-params', params, replace? })`; the host keeps the same Space and
+record, makes no destination lookup, needs no navigation alias and adds a history entry
+unless `replace` is set. A view that changes its own params (an open item, a tab, a period)
+uses it, never `toNamedSpace` to itself. The toolkit's open item (`ListReader` `openParam`) and period
+(`usePeriod`) write through it. `useShown(name, {sorts?, pageSize?, offset?, includeContent?})` runs
 exactly the declared list with the current params through `POST /portal_spaces/shown`
 (`server/lib/space_view_manifest.py:execute_view_shown`): the signed-in Editor's own
 Space authority on the Space's binding, the same live/preview resolver as actions, and
@@ -1476,7 +1482,7 @@ Important hooks include:
 - `useTools`
 - `useNotis`
 - `useNotisNavigation`
-- `useTopBarSearch`
+- `useTopBarSearch` (legacy apps only; a Space passes `search` to `ListReader`)
 - `useHandover`
 - `useBackend`
 
@@ -1609,7 +1615,7 @@ Explicit tool declarations and `useTool` calls should use canonical tool names s
 | `useNotis()` | Access app, route, selected collection item, optional exact resource id, and readiness | `const { app, route, collectionItem, resourceId, ready } = useNotis()` |
 | `useHandover()` | Hand a piece of work to the Notis manager chat | `const { handover, pending, available } = useHandover()` |
 | `useNotisNavigation()` | Open a Space view by id with an optional record and declared params, or another route of the app | `toSpace(spaceId, { recordKey: row.record_key })` |
-| `useTopBarSearch(opts)` | Bind the current view to the Portal-owned top-bar search input | `const { setLoading } = useTopBarSearch({ value, onChange })` |
+| `useTopBarSearch(opts)` | Legacy apps only: bind the current view to the Portal-owned top-bar search input. A Space passes `search` to `ListReader` instead | `const { setLoading } = useTopBarSearch({ value, onChange })` |
 | `useCloudComputer()` | Read a few facts about the user's cloud computer | `const { facts } = useCloudComputer()` |
 | `useBackend()` | Make direct backend requests | `const { request } = useBackend()` |
 | `useCollectionInteractions(opts)` | Standardize active-item focus, multi-selection, marquee selection, shortcuts, and semantic bulk actions | `const collection = useCollectionInteractions({ items: notes, getId: (n) => n.id })` |
@@ -1993,9 +1999,10 @@ artifacts and checks. Store publication always needs separate explicit approval.
 Space views should feel native to the Portal.
 
 Preferred UI approach:
-- **Use scaffolded shadcn components** (`@/components/ui/*`) -- do not hand-roll buttons, cards, or badges.
+- **Use scaffolded components** (`@/components/ui/*`): do not hand-roll buttons or badges. Sections are `Section` and rows are `Row` from `@notis/sdk/ui`, not cards.
 - **Use Notis theme tokens** -- `bg-background`, `bg-card`, `border-border`, `text-foreground`, `text-muted-foreground`.
-- **Use portal shell classes** -- `notis-app-shell` for ordinary pages, `notis-app-split` plus `notis-app-pane-list` / `notis-app-pane-detail` for list-plus-detail pages, `notis-app-surface` for a flat tinted panel, `.list-row` for rows. The design defaults in the shipped skill (`server/skills/notis-apps/references/design.md`) are enforced by `notis spaces build` through `server/config/notis_app_design_rules.json`; the only override is an inline `notis-design-allow` directive with a reason.
+- **Use the toolkit** -- `ListReader` for list-plus-reader pages, `Section` for page sections and `Row` for rows, all from `@notis/sdk/ui`. The open record joins the top bar crumb through `ListReader` `crumbLabel`, or `useTopBarTitleLeaf(label)` on a Space's own layout (see the [notis-apps design reference](../server/skills/notis-apps/references/design.md)). The design defaults in the shipped skill (`server/skills/notis-apps/references/design.md`) are enforced by `notis spaces build` through `server/config/notis_app_design_rules.json`; the only override is an inline `notis-design-allow` directive with a reason.
+- **Space SDK stays current**: every Space build, scaffold and `notis spaces pull` mirrors the Space SDK shipped by the running CLI into the Space's `packages/sdk` (the host-module types plus a Node-only runtime for the Space's own tests; see [Space SDK runtime contract](#space-sdk-runtime-contract-protocol-2)).
 - **Assume the portal provides theme tokens on the view host** -- Space views should feel native by consuming those tokens inside the shadow tree, not by restyling the portal shell.
 - **Keep layouts compact and dashboard-like** -- cards, tables, sections, badges. Not marketing-site heroes.
 - **Use Phosphor icons only** with the `phosphor:` prefix. Never emojis.
@@ -2016,7 +2023,7 @@ If a screen looks like a standalone microsite instead of a portal tool, it is to
 These rules are the canonical platform assumptions:
 
 1. **Vite + React only**: no Next.js, no custom server.
-2. **ES module bundle**: `notisViteConfig()` produces a library-mode bundle with React externalized.
+2. **ES module bundle**: `notisViteConfig()` produces a library-mode bundle with React externalized; a Space bundle also externalizes `@notis/sdk` and `@notis/sdk/ui` (see [Space SDK runtime contract](#space-sdk-runtime-contract-protocol-2)).
 3. **Component rendering**: every Space view renders as a React component in the same Shadow DOM host. No SDK iframe runtime.
 
    **Trust boundary:** Shadow DOM isolates styles, not JavaScript or credentials. A loaded SDK bundle shares the Portal browser context. The portal mounts each view into a shadow-scoped surface and injects the runtime provider itself.
@@ -2035,7 +2042,7 @@ These rules are the canonical platform assumptions:
 - **NEVER explore server code or tool schemas to invent an alternative publishing workflow**: use the Notis CLI.
 - **NEVER replace a portal-owned sidebar with a custom in-view sidebar because a preview looks wrong**: escalate it as a platform issue.
 - **NEVER invent a custom visual language**: views should look like a natural extension of the portal.
-- **NEVER hand-roll buttons, cards or badges when the SDK already provides them.**
+- **NEVER hand-roll buttons or badges when the SDK already provides them.**
 
 ---
 
@@ -2282,7 +2289,7 @@ Hover/focus and newest-first chat-link preparation fetch authorized light destin
 
 The shared document/history/save and recent-chat preparation contract is owned by the Portal navigation code under `portal/src/`.
 
-The canonical UI/authoring contract and cached-read examples live in [the shipped Notis apps skill](../server/skills/notis-apps/references/design.md#instant-view-loading-contract-required). The CLI scaffold and bundled SDK source mirror that contract. Release the compatible host/SDK before deploying Spaces that rely on this behavior; this migration itself does not authorize package publication or deployment.
+The canonical UI/authoring contract and cached-read examples live in [the shipped Notis apps skill](../server/skills/notis-apps/references/design.md#loading-empty-and-error). The CLI scaffold and bundled SDK source mirror that contract. Release the compatible host/SDK before deploying Spaces that rely on this behavior; this migration itself does not authorize package publication or deployment.
 
 ### Loading measurement objectives
 
@@ -2313,8 +2320,8 @@ New CLI scaffolds use Tailwind CSS 4 with `@tailwindcss/postcss`.
 The retained config owns Notis theme tokens and the animation plugin. SDK
 `styles.css` is framework-neutral CSS on injected Notis variables; it must not
 start a second Tailwind compilation or depend on the consuming app's `@apply`
-context. Its shell rules (`*` border colour, `[data-notis-app-root]`,
-`.notis-app-shell`, `.notis-app-surface`, row colours, split panes, sections) live
+context. Its shell rules (`*` border colour, `[data-notis-app-root]`, split panes,
+sections) live
 in the native sublayer `@layer components.notis-sdk`, after a repeated Tailwind 4
 order statement (`@layer properties, theme, base, components, utilities;`, Tailwind 4's
 full order including the `properties` layer of its `--tw-*` fallback reset), so a page's
@@ -2330,12 +2337,6 @@ restates the background and padding it needs. Never use bare Tailwind-owned
 independently, and Tailwind 3 rejects those blocks without matching `@tailwind`
 directives in that same stylesheet (a dotted sublayer name passes through). Keep its canonical `packages/sdk/src/styles.css` and bundled scaffold
 copy synchronized. Existing apps may retain their older Tailwind build.
-List-row spacing is the one component exception: `.list-row` keeps the Portal/Beta
-16px horizontal gutter and 12px vertical padding, even beside `px-*` / `py-*`
-utilities. Only that padding is unlayered, with enough specificity to survive either
-Tailwind 3 stylesheet order. Shell and section padding, split-pane widths, row
-colours and borders still accept responsive page utilities. A deliberate inline
-or important padding override can change a row's spacing.
 The SDK's `notisTailwindContent` Vite helper registers its sources with an
 additional CSS `@source` directive for Tailwind 4 imports. For existing Tailwind 3
 `@tailwind` entry points it retains the temporary configuration wrapper. Both
@@ -2359,6 +2360,61 @@ Global `html` and `:root` selectors remain forbidden in deployed bundles.
 ## Embedded SDK build ownership
 
 `packages/sdk/` is the only authored SDK source. The CLI build generates `packages/cli/dist/sdk/`, which is included in the published package and used for scaffolding/refresh. Host-only presentation mounting stays in the canonical SDK and CLI host bundle, not in an app's public embedded SDK. Refresh retires only known unmodified copies; modified extra files remain visible to the normal boundary validator. Do not restore an authored copy under `packages/cli/template/packages/sdk/`. The public CLI mirror receives the canonical `packages/sdk/` source so its builds remain self-contained.
+
+### Space SDK runtime contract (protocol 2)
+
+Spaces never bundle the SDK. The host provides it like React, so the Portal, the Site
+and every mounted Space share one module instance (one store, one keyboard engine, one
+layer stack).
+
+- **Bundle imports.** A Space bundle may import only `react`, `react/jsx-runtime`,
+  `react-dom`, `react-dom/client`, `@notis/sdk` and `@notis/sdk/ui`
+  (`NOTIS_SDK_HOST_MODULES` in `packages/sdk/src/runtimeModules.ts`). `@notis/sdk/words`
+  is bundled; `@notis/sdk/config` and `@notis/sdk/vite` are build-time only.
+  `@notis/sdk/interactions` and `@notis/sdk/styles.css` no longer exist. The CLI refuses a
+  bundle that imports anything else from the SDK or carries SDK code
+  (`assertSpaceBundleUsesHostSdk`).
+- **Host globals.** Before any Space mounts, the host sets `window.React`, `ReactDOM`,
+  `ReactDOMClient`, `__ReactJSXRuntime`, `__NotisSDK` (the `@notis/sdk` namespace) and
+  `__NotisSDKUI` (the `@notis/sdk/ui` namespace) from its own imports: the Portal in
+  `portal/src/lib/hostGlobals.ts`, the Site in `portal/src/site/SiteHostGlobals.tsx`, the
+  verify renderer in `packages/view-renderer/src/host.tsx` and the local harness in
+  `packages/cli/src/space-harness-host.ts`.
+- **Linking.** `rewriteBundleImports` (`packages/sdk/src/bundleModule.ts`) replaces each
+  bare import with a shim that exports the names of the live host namespace. A name or
+  module the host lacks fails before the bundle runs with `client_update_required` and
+  `missing` (`specifier:name`); a host without the globals fails with
+  `notis_sdk_host_unavailable`.
+- **Toolkit stylesheet.** The host registers `packages/sdk/src/ui/toolkit.css` once and
+  adopts it into every Space shadow root. The Portal serves a copy at
+  `/embedded/toolkit.css` (written by `portal/scripts/build-toolkit-css.mjs` in every
+  predev/prebuild hook) and loads it with `fetch`, because a global CSS import is merged
+  into the Portal's chunks. A failed load never blocks the Space and is retried on the
+  next mount. The verify renderer and harness inline the text at build time.
+- **Types and test runtime.** `packages/cli/scripts/build-space-sdk.js` emits `packages/cli/dist/space-sdk/`:
+  declarations for the host modules, source for the bundled and build-time entries
+  and their imports, no CSS, a class list (`src/tailwind-candidates.d.ts`) so the
+  Space's Tailwind scan still emits the utilities the toolkit renders, and `dist/`, a
+  Node-only build of `@notis/sdk` and `@notis/sdk/ui` under the `node` export condition
+  for the Space's own tests. Views never load it: TypeScript reads `types` and a Space
+  build externalizes both modules. The build fails if the SDK does not type-check. Every
+  Space build, scaffold and `spaces pull` mirrors it into the Space's `packages/sdk`,
+  removing every other file there, so `dist/` is rewritten on every sync. It is never
+  uploaded: source collection skips `dist` folders and a pull refuses an archive with one.
+- **Lockfile.** Each sync then keeps `package-lock.json` acceptable to `npm ci`: when the
+  lock's `packages/sdk` record differs from the mirrored manifest, the CLI runs
+  `npm install --package-lock-only --ignore-scripts` (lock only, `node_modules` untouched).
+  If npm fails, offline for instance, the build or pull continues with a warning that
+  gives npm's reason and asks for `npm install` once the registry is reachable; the next
+  sync retries.
+
+The embedded SDK copy in `packages/cli/dist/sdk/` described above is built by
+`packages/cli/scripts/build-legacy-sdk.js`: every SDK source file outside the Spaces toolkit
+(`src/ui/**`, `src/words/**`, `toolkit.css`), plus only the toolkit files that source imports,
+without tests or host-only files. Its exports are `.`, `./interactions`, `./config`, `./vite`,
+`./styles.css` and the `./ui` placeholder (`src/ui.ts`), and its dependencies are only the packages
+that source imports. The copy passes the unchanged app boundary and design validators, which still
+check every file under `packages/sdk`.
 
 ### Record components in Space views (V12)
 
