@@ -12,14 +12,14 @@ notarized macOS automation CLI built on a Swift core.
 
 This is **GUI control of the user's own computer**. It is not browser
 automation and it is not a sandbox. For web pages use `notis-browser-control`.
-For an isolated, reproducible environment use the Vercel Sandbox. Peekaboo
+For an isolated, reproducible environment use the Cloud Computer. Peekaboo
 needs the live macOS Aqua session, the screen, and TCC permissions, so it only
 runs on the user's `local_shell`.
 
 ## Step 0: Switch to the LOCAL shell FIRST (mandatory; Cloud agents see below)
 
 Peekaboo controls the user's physical Mac, so every command must run on the
-**local shell** (the Notis desktop bridge), never the Vercel sandbox. Shell
+**local shell** (the Notis desktop bridge), never the Cloud Computer. Shell
 calls default to `sandbox_shell` — if you skip this step your `peekaboo`
 command runs in `/vercel/sandbox`, where Peekaboo does not exist and cannot
 touch the Mac.

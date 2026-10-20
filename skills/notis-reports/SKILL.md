@@ -1,6 +1,6 @@
 ---
 name: notis-reports
-description: Save HTML pages and reports in Notis Notes, read saved reports, or create and revise interactive reports as independent Space views.
+description: Save HTML pages and reports in the most appropriate Space (by default the Notis reports folder of Notis Notes), read saved reports, or create and revise interactive reports as independent Space views.
 feature_flag: spaces
 mcp_resource: true
 mcp_tool_patterns: []
@@ -11,8 +11,8 @@ mcp_tool_patterns: []
 A report is either a saved page or an interactive view, not a separate UI system:
 
 - **Saved page or report** (self-contained HTML, or a finished report the user
-  wants to keep): a note in **Notis Notes**, saved with the Save HTML Skill that
-  comes with Notes. See [Save an HTML page or report](#save-an-html-page-or-report).
+  wants to keep): a page in the most appropriate Space, by default a note in the
+  **Notis reports** folder of **Notis Notes**. See [Save an HTML page or report](#save-an-html-page-or-report).
 - **Interactive report** (typed params such as a period, live data reads): an
   independently authored Space view with its own source, data declarations and
   memory policy. Editing one report must not replace an unrelated view.
@@ -35,27 +35,29 @@ Reading does not regenerate historical figures or authorize source/data changes.
 
 ## Save an HTML page or report
 
-Notis Notes keeps HTML pages and reports as notes in folders. Save into the
-**Notis reports** folder unless the user names another one; the Save HTML Skill
-creates the folder when it is missing. "All notes" hides these notes; each
+Save the page in the most appropriate Space: the one the user names, or the
+Space the work belongs to when it keeps pages. Otherwise save it in the
+**Notis reports** folder of **Notis Notes** (or the Notes folder the user names);
+the Save HTML Skill creates the folder when it is missing. "All notes" hides these notes; each
 folder shows everything in it.
 
-1. Use the **Save HTML** Skill that comes with Notis Notes. It creates the note
-   (title, type "Report" or "HTML page", folder), uploads the original bytes with
-   the generic native file tool, attaches the returned file with a separate
-   revision-checked update, reads the note back and returns its Notes link. This
-   guide does not duplicate that workflow.
-2. A correction updates the same note through the same Skill, never a
+1. Save it with the Skill that Space ships for its pages. In Notes that is the
+   **Save HTML** Skill: it creates the note (title, type "Report" or "HTML page",
+   folder), uploads the original bytes with the generic native file tool,
+   attaches the returned file with a separate revision-checked update, reads the
+   note back and returns its link. This guide does not duplicate that workflow.
+2. A correction updates the same page through the same Skill, never a
    near-duplicate. A report record preserved from before Spaces cannot be
    rewritten by any tool: save the corrected version as a new page in the same
    folder and keep the original.
 3. Upload success alone is not a saved page, and a file URL is not the page link.
-   Return the Notes link, which opens the page full screen.
+   Return the page's link in its Space, which opens it full screen.
 4. Keep the page private. Only when asked, use Share to create a public link for
    that one page. A report preserved from before Spaces cannot be shared.
-5. If Notis Notes is not installed, suggest installing it. Never save the page
-   anywhere else: no other database, website, public paste or file host, or
-   sandbox download link. There is no separate HTML or report save tool.
+5. When the page goes to Notes and Notis Notes is not installed, suggest
+   installing it. Never save the page outside a Space: no website, public paste
+   or file host, or sandbox download link. There is no separate HTML or report
+   save tool.
 
 ## Create or revise an interactive report
 

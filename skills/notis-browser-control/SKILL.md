@@ -1,6 +1,6 @@
 ---
 name: notis-browser-control
-description: Use when a task needs browser automation through agent-browser in either a local shell or the Vercel Sandbox, and when the agent must choose the right runtime for that browser work.
+description: Use when a task needs browser automation through agent-browser in either a local shell or the Cloud Computer, and when the agent must choose the right runtime for that browser work.
 ---
 
 # Notis Browser Control Skill
@@ -12,13 +12,13 @@ This skill routes to on-demand browser guidance and preserves
 Notis-specific runtime rules for:
 
 1. `local_shell` browser control on the user's computer
-2. `sandbox_shell` browser control in the Vercel Sandbox
+2. `sandbox_shell` browser control in the Cloud Computer
 
 ## Core Runtime Rule
 
 Browser automation is a shell workflow.
 
-- Use `sandbox_shell` when the browser can live in the Vercel Sandbox.
+- Use `sandbox_shell` when the browser can live in the Cloud Computer.
 - Use `local_shell` when the browser must live on the user's computer.
 - There is no visible desktop-control fallback. If Agent Browser cannot access
   the needed local browser session, explain the limitation and ask the user to
@@ -62,7 +62,7 @@ Local shell browser control:
 
 Sandbox shell browser control:
 
-- runs in an isolated Vercel Sandbox
+- runs in the isolated Cloud Computer
 - starts cookie-empty on every run
 - cannot access the user's real browser profile, host keychain, local
   cookies, local tabs, or local extensions
