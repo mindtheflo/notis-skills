@@ -32,8 +32,8 @@ Use sandbox sessions for:
 
 The sandbox cannot reuse the user's local browser profile. For Notis itself,
 use the existing sign-in-link tool through native tools or the authenticated
-Notis CLI; follow the reading guide in the `notis-apps` skill (hosted guide:
-`notis://docs/notis-apps/references/reading.md`). No local cookies, password vault,
+Notis CLI; follow the reading guide in the `notis-spaces` skill (hosted guide:
+`notis://docs/notis-spaces/references/reading.md`). No local cookies, password vault,
 or user-opened Portal session is needed for that flow.
 
 For other sites, use one of these:

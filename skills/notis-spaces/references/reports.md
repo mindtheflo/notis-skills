@@ -1,11 +1,3 @@
----
-name: notis-reports
-description: Save HTML pages and reports in the most appropriate Space (by default the Notis reports folder of Notis Notes), read saved reports, or create and revise interactive reports as independent Space views.
-feature_flag: spaces
-mcp_resource: true
-mcp_tool_patterns: []
----
-
 # Notis Reports
 
 A report is either a saved page or an interactive view, not a separate UI system:
@@ -20,14 +12,14 @@ A report is either a saved page or an interactive view, not a separate UI system
 Pages and reports saved before Spaces are kept in Notis Notes too, with their
 stored format: HTML pages open full screen and preserved report records render
 as reports. If sibling references are unavailable in your harness, load
-`notis-apps` by name.
+`notis-spaces` by name.
 
 ## Read an existing report
 
 Use native data tools when they answer the question. For live figures, charts,
-filters, HTML or visual inspection, load `notis-apps` and follow its
-[Read and render](../notis-apps/references/reading.md) guide (hosted MCP:
-`notis://docs/notis-apps/references/reading.md`).
+filters, HTML or visual inspection, load `notis-spaces` and follow its
+[Read and render](reading.md) guide (hosted MCP:
+`notis://docs/notis-spaces/references/reading.md`).
 
 Resolve the exact report period and current view link with `LOCAL_NOTIS_FIND_VIEWS`,
 then render it with `LOCAL_NOTIS_RENDER_VIEW`. Inspect Markdown and image output.
@@ -64,8 +56,8 @@ folder shows everything in it.
 1. Reconcile identity first. Find the existing report Space for a requested
    correction. Preserve the selected identity and revision; a similarly named
    report is not the same artifact.
-2. For a new independent report, follow `notis-apps` [View authoring](../notis-apps/references/views.md),
-   [Design](../notis-apps/references/design.md) and [Delivery](../notis-apps/references/release.md).
+2. For a new independent report, follow `notis-spaces` [View authoring](views.md),
+   [Design](design.md) and [Delivery](release.md).
    Declare the report's period/selection as typed params, its real data in `shows`
    or declared actions, clear source context, and a suitable memory policy.
 3. Choose captured results, live reads or both according to the user's request.
@@ -80,6 +72,6 @@ folder shows everything in it.
 
 ## Optional passive feedback
 
-Use [Context sharing](../notis-apps/references/context.md) for selected text,
+Use [Context sharing](context.md) for selected text,
 comments or annotations the user wants to bring back to an agent. Feedback is
 reference context, not execution approval, and does not itself send a message.

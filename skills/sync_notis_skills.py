@@ -69,7 +69,7 @@ DEFAULT_OUR_SKILLS = {
     name
     # notis-desktop-use is intentionally NOT default: experimental, opt-in,
     # and additionally gated by the desktop_control entitlement.
-    for name in ("notis-apps", "notis-automation", "notis-browser-control", "notis-cli", "notis-query", "notis-reports")
+    for name in ("notis-spaces", "notis-automation", "notis-browser-control", "notis-cli", "notis-query")
     if name in OUR_SKILLS
 }
 ANTHROPICS_SKILL_NAMES = ["docx", "pdf", "pptx", "xlsx"]
@@ -84,6 +84,7 @@ ANTHROPICS_TARBALL_MAX_BYTES = 128 * 1024 * 1024
 NOTIS_SKILL_CREATOR_NAME = "notis-skill-creator"
 UPSTREAM_SKILL_CREATOR_NAME = "skill-creator"
 RENAMED_REPO_SKILLS = {
+    "notis-apps": "notis-spaces",
     UPSTREAM_SKILL_CREATOR_NAME: NOTIS_SKILL_CREATOR_NAME,
     # notis-my-computer-use was renamed to notis-desktop-use; this maps the old
     # curated_skills row (keyed on the legacy name) onto the renamed folder so the

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Notis Reports"
-  short_description: "Save reports in Notis Notes or build interactive report views"
-  default_prompt: "Save this work as a report in Notis Notes."

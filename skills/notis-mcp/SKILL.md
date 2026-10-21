@@ -42,7 +42,7 @@ The most important guides are:
 - `notis://docs/notis-query` for structured native-database queries and
   generated database upserts
 - `notis://docs/notis-automation` for reminder and automation mutations
-- `notis://docs/notis-apps` for explicit Store app installation
+- `notis://docs/notis-spaces` for explicit Store app installation
 - `notis://docs/notis-cli` when comparing the generic MCP workflow with the
   local CLI workflow
 

@@ -5,7 +5,7 @@
     {
       "title": "Build with Notis",
       "description": "Create Spaces, skills, and database-powered workflows.",
-      "skills": ["notis-apps", "notis-skill-creator", "notis-query"]
+      "skills": ["notis-spaces", "notis-skill-creator", "notis-query"]
     },
     {
       "title": "Automate Notis",

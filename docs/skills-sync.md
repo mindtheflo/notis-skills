@@ -72,7 +72,7 @@ Important flags:
 
 The script discovers repo-maintained skills dynamically: **every `server/skills/<name>/` folder that contains a `SKILL.md`** (`discover_repo_skills`). Adding a new skill folder makes it syncable with no script edit. A subset — `DEFAULT_OUR_SKILLS` in the script — is marked `is_default = true` on bootstrap, which auto-installs it for eligible users; experimental/opt-in skills are intentionally left out of that set.
 
-`notis-reports` is in that default subset and declares `feature_flag: spaces`. It is therefore auto-installed only for users eligible for Spaces features, without adding a CLI base skill or a separate Notis App. `notis-feedback` shares the Spaces flag but is not in the default auto-install subset; it is an opt-in entrypoint to the [shared feedback reference](../server/skills/notis-apps/references/context.md).
+`notis-spaces` is in that default subset and declares `feature_flag: spaces`, so it is auto-installed only for users eligible for Spaces features. It also owns the report and saved-HTML guidance in [`references/reports.md`](../server/skills/notis-spaces/references/reports.md); there is no separate `notis-reports` skill. `notis-feedback` shares the Spaces flag but is not in the default auto-install subset; it is an opt-in entrypoint to the [shared feedback reference](../server/skills/notis-spaces/references/context.md).
 
 ### Access metadata
 
@@ -268,7 +268,7 @@ and unchanged local folder do not rewrite skills. Bundled asset changes invalida
 the fingerprint; failed writes are never cached. External source URLs remain
 rechecked rather than caching a potentially incomplete markdown fallback.
 
-The CLI also owns three base skills: `notis-apps`, `notis-query`, and
+The CLI also owns three base skills: `notis-spaces`, `notis-query`, and
 `notis-cli`. The npm package and the Desktop build both ship them, and every CLI
 launch and Desktop refresh reconciles their canonical copies under
 `~/.notis/skills/base/` and links all three into the supported agent roots.

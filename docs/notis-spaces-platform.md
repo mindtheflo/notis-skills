@@ -7,7 +7,7 @@ building, debugging or documenting them. It also keeps the repository developmen
 Space work relies on; [Development workflow](development-workflow.md) owns repository
 setup, environment files and the dev stack.
 
-Use this together with [server/skills/notis-apps/SKILL.md](../server/skills/notis-apps/SKILL.md):
+Use this together with [server/skills/notis-spaces/SKILL.md](../server/skills/notis-spaces/SKILL.md):
 - this document explains the platform model and contracts
 - the skill explains the execution workflow with the CLI
 
@@ -17,6 +17,28 @@ App link (`/apps/<id>[/<page>]`) opens that Space
 App Store, `notis apps` command group or `notis:apps` permission any more; a sign-in that
 still asks for `notis:apps` gets it dropped
 ([SPC-002](../.agents/skills/tools/notis-specs/specs/spc.md)).
+
+### Space intelligence release order
+
+Ship after the Spaces any-tool-pipe dependency. Keep beta verification distinct
+from local seeded-branch evidence. The on-demand acceptance cases live under
+`scripts/testing/notis-tests/tests/spaces/space-intelligence-*.md`.
+
+Release the matching backend, Portal, CLI and SDK before publishing account-owned
+Tasks/Journal sources that use `period`, conditional filters (`when`) or `questions`. Their source belongs to
+the owning Space, not this repository. Standard declarations alone do not prove
+that an installed view's controls and reads implement those settings.
+
+History restores immutable view source as another publication, under current
+Editor authority and revision checks. Native records, linked Skills, sharing
+and credentials remain current. An agent must retain its before-version to
+undo its own last change; it must not guess from another Editor's latest entry.
+
+Store Update hands the exact install to an agent. A sent request is only
+**started**, not an applied update or restored customization. Preserve local
+source and customization intent before adopting upstream; verify the resulting
+installed source, not just the Store update receipt. Store publication stays
+separately authorized.
 
 ### Tool boundaries
 
@@ -1592,7 +1614,7 @@ also reports inactive toolbars after their shadow-root content is detached.
 
 ## SDK Reference
 
-`Dialog` is the SDK-owned native modal; apps own its content and actions. See the [SDK component reference](../server/skills/notis-apps/references/sdk.md) for its props. Browser top-layer rendering keeps it above selection toolbars inside either rendering boundary, and SDK collection shortcuts are suspended within it.
+`Dialog` is the SDK-owned native modal; apps own its content and actions. See the [SDK component reference](../server/skills/notis-spaces/references/sdk.md) for its props. Browser top-layer rendering keeps it above selection toolbars inside either rendering boundary, and SDK collection shortcuts are suspended within it.
 
 ### Imports
 
@@ -1621,7 +1643,7 @@ Explicit tool declarations and `useTool` calls should use canonical tool names s
 | `useCollectionInteractions(opts)` | Standardize active-item focus, multi-selection, marquee selection, shortcuts, and semantic bulk actions | `const collection = useCollectionInteractions({ items: notes, getId: (n) => n.id })` |
 | `useMultiSelect(opts)` | Deprecated one-minor compatibility wrapper; migrate to `useCollectionInteractions` | — |
 | `useActiveResource(resource)` | Tell Notis which item is focused inside the current view | `useActiveResource({ id: post.slug, kind: 'blog_post', label: post.title })` |
-| `useAgentContext()` | Add, update or detach unsent generic context pills | See the [shared context reference](../server/skills/notis-apps/references/context.md) |
+| `useAgentContext()` | Add, update or detach unsent generic context pills | See the [shared context reference](../server/skills/notis-spaces/references/context.md) |
 
 #### Focused resources and selected quotes
 
@@ -2001,7 +2023,7 @@ Space views should feel native to the Portal.
 Preferred UI approach:
 - **Use scaffolded components** (`@/components/ui/*`): do not hand-roll buttons or badges. Sections are `Section` and rows are `Row` from `@notis/sdk/ui`, not cards.
 - **Use Notis theme tokens** -- `bg-background`, `bg-card`, `border-border`, `text-foreground`, `text-muted-foreground`.
-- **Use the toolkit** -- `ListReader` for list-plus-reader pages, `Section` for page sections and `Row` for rows, all from `@notis/sdk/ui`. The open record joins the top bar crumb through `ListReader` `crumbLabel`, or `useTopBarTitleLeaf(label)` on a Space's own layout (see the [notis-apps design reference](../server/skills/notis-apps/references/design.md)). The design defaults in the shipped skill (`server/skills/notis-apps/references/design.md`) are enforced by `notis spaces build` through `server/config/notis_app_design_rules.json`; the only override is an inline `notis-design-allow` directive with a reason.
+- **Use the toolkit** -- `ListReader` for list-plus-reader pages, `Section` for page sections and `Row` for rows, all from `@notis/sdk/ui`. The open record joins the top bar crumb through `ListReader` `crumbLabel`, or `useTopBarTitleLeaf(label)` on a Space's own layout (see the [notis-spaces design reference](../server/skills/notis-spaces/references/design.md)). The design defaults in the shipped skill (`server/skills/notis-spaces/references/design.md`) are enforced by `notis spaces build` through `server/config/notis_app_design_rules.json`; the only override is an inline `notis-design-allow` directive with a reason.
 - **Space SDK stays current**: every Space build, scaffold and `notis spaces pull` mirrors the Space SDK shipped by the running CLI into the Space's `packages/sdk` (the host-module types plus a Node-only runtime for the Space's own tests; see [Space SDK runtime contract](#space-sdk-runtime-contract-protocol-2)).
 - **Assume the portal provides theme tokens on the view host** -- Space views should feel native by consuming those tokens inside the shadow tree, not by restyling the portal shell.
 - **Keep layouts compact and dashboard-like** -- cards, tables, sections, badges. Not marketing-site heroes.
@@ -2060,7 +2082,7 @@ These rules are the canonical platform assumptions:
 Use these files when you need implementation detail after reading this doc:
 
 - [AGENTS.md](../AGENTS.md)
-- [server/skills/notis-apps/SKILL.md](../server/skills/notis-apps/SKILL.md)
+- [server/skills/notis-spaces/SKILL.md](../server/skills/notis-spaces/SKILL.md)
 - [packages/sdk](../packages/sdk)
 - [packages/cli/src/command-specs/spaces.js](../packages/cli/src/command-specs/spaces.js)
 - [packages/cli/src/runtime/space-platform.js](../packages/cli/src/runtime/space-platform.js)
@@ -2081,7 +2103,7 @@ Use these files when you need implementation detail after reading this doc:
 
 If the task is conceptual, start with this document.
 
-If the task is execution-oriented, read this document first and use the `notis-apps` skill second.
+If the task is execution-oriented, read this document first and use the `notis-spaces` skill second.
 
 If the code seems to disagree with this document, treat this file as the intended platform contract and verify the specific implementation detail before changing behavior.
 
@@ -2095,7 +2117,7 @@ App-view database queries include document bodies by default. Lists that only ne
 
 Clicked destinations and back/forward navigation start their authorized lightweight descriptor in parallel with the lazy route module. These foreground preparations run at foreground priority, so they are never held behind the speculative queue’s concurrency limit, and they share the same scoped descriptor/asset promises. Every SDK bundle uses the same loader and Shadow DOM mount. Host-provided rich-text and Markdown editors load on demand, with an editor-local accessible placeholder, so non-editor views do not wait for editor code.
 
-Retained hosts keep a stable DOM order independently of their LRU order, preserving the Shadow DOM and mounted React shell. Bundle modules, styles and reads remain scoped by account, environment, app/report identity, release and effective permissions. Per-request cache keys include the route context. A report document's reads are scoped to that document, so moving to another report must not reuse its reads. An app route's reads carry only the app and route, never its deep-linked `?resource=` id, so moving between resources keeps the same cache instead of emptying the view and refetching every read. Tool reads are keyed by their exact arguments; a custom `useQuery` read that depends on the resource must include it in its key, as the [design guide](../server/skills/notis-apps/references/design.md) requires. All SDK bundles receive theme tokens and Portal contexts through the same host. There is no separate iframe host, postMessage SDK bridge or iframe-specific editor overlay.
+Retained hosts keep a stable DOM order independently of their LRU order, preserving the Shadow DOM and mounted React shell. Bundle modules, styles and reads remain scoped by account, environment, app/report identity, release and effective permissions. Per-request cache keys include the route context. A report document's reads are scoped to that document, so moving to another report must not reuse its reads. An app route's reads carry only the app and route, never its deep-linked `?resource=` id, so moving between resources keeps the same cache instead of emptying the view and refetching every read. Tool reads are keyed by their exact arguments; a custom `useQuery` read that depends on the resource must include it in its key, as the [design guide](../server/skills/notis-spaces/references/design.md) requires. All SDK bundles receive theme tokens and Portal contexts through the same host. There is no separate iframe host, postMessage SDK bridge or iframe-specific editor overlay.
 
 Space transport lifetime follows current account/source/access/record authority,
 not cosmetic selection or chrome callbacks. Selection still updates the frame
@@ -2289,7 +2311,7 @@ Hover/focus and newest-first chat-link preparation fetch authorized light destin
 
 The shared document/history/save and recent-chat preparation contract is owned by the Portal navigation code under `portal/src/`.
 
-The canonical UI/authoring contract and cached-read examples live in [the shipped Notis apps skill](../server/skills/notis-apps/references/design.md#loading-empty-and-error). The CLI scaffold and bundled SDK source mirror that contract. Release the compatible host/SDK before deploying Spaces that rely on this behavior; this migration itself does not authorize package publication or deployment.
+The canonical UI/authoring contract and cached-read examples live in [the shipped Notis apps skill](../server/skills/notis-spaces/references/design.md#loading-empty-and-error). The CLI scaffold and bundled SDK source mirror that contract. Release the compatible host/SDK before deploying Spaces that rely on this behavior; this migration itself does not authorize package publication or deployment.
 
 ### Loading measurement objectives
 
