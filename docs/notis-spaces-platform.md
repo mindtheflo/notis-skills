@@ -405,6 +405,13 @@ Space or page: their actor key is `site:<link_id>`, they reach only declared
 actions under a saved grant whose issuer pays, never an agent, Skill or
 automation, and turning a Site off revokes it at once.
 
+- **Include sub-Spaces** (`spaces.share_include_children`, `space_sites.include_children`, both
+  default true; `server/lib/space_sub_spaces.py`): an Editor turns sharing's switch off per Space with
+  `space-share-children` (`set_notis_space_share_children`). Shares and Team shares on that Space then
+  stop below it, while `resolve_notis_space_access` keeps walking up, so access granted on a higher
+  Space still counts and a direct share always does. A whole-Space Site with `include_children` off
+  reaches its own Space and the child Spaces its records own (`notis_site_space_reach`); page and
+  record Sites ignore the setting. Both are evaluated live, so children created later follow them.
 - **Departures** (`member-remove`, `leave`; `server/lib/space_departures.py`):
   "Keep a copy" defaults on and gives the departing person copies of the pages,
   databases and Skills they lose, with copied automations paused. A resource of
