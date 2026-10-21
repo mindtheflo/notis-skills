@@ -1527,6 +1527,30 @@ serving, runtime enforcement, and database and tool access. Its HTTP surface is
 `server/routers/portal_spaces/_1_code/entry.py` (`/portal_spaces/*`), with the behavior in
 `server/lib/space_*.py`.
 
+#### Out-of-date apps and malformed calls
+
+Old Notis apps are not supported. `server/lib/spaces_protocol.py` keeps two separate answers:
+
+- **Too-old app: 410 `client_update_required`.** It is the only answer in the Spaces area that
+  asks a client to update. It is sent when a request lacks the current `x-notis-spaces-protocol`
+  header (`require_spaces_client_protocol`), and by Skill sync when the request has no
+  `skill_sync_protocol` (`require_native_sync_protocol` in `server/lib/native_skill_sync.py`).
+  The body carries `message`, `required_protocol`, `received_protocol` and, when the request names
+  its client (`spaces_client`: `cli`, `desktop` or `web`), `client`. A CLI answer also carries
+  `update_command` and `hints`. The Portal shows its own localized copy from the code and client
+  (`Spaces.updateRequired*` and `SpaceErrors.updateRequired`, EN and FR), never the server's
+  English; the CLI shows its own update message.
+- **Current app, malformed call: 400 naming the field.** A native Space or database tool call
+  without `protocol` answers `protocol_required`; any value other than the number `1` answers
+  `invalid_protocol`. A Skill sync with a `skill_sync_protocol` other than the number `2` answers
+  `invalid_skill_sync_protocol`. Each carries `field` and `required_protocol`, and its message
+  says how to fix the call. A database definition edit on a converted database that uses the
+  old identifier answers 400 `database_target_required` with `field: "target"`. None of these
+  ever says "update".
+
+There is no compatibility path for an app without these protocols: no fallback reader, no
+per-account fence and no partial sync.
+
 ### Portal
 
 The Portal renders Space views as React components directly in its React tree. The
