@@ -2054,7 +2054,7 @@ Space views should feel native to the Portal.
 Preferred UI approach:
 - **Use scaffolded components** (`@/components/ui/*`): do not hand-roll buttons or badges. Sections are `Section` and rows are `Row` from `@notis/sdk/ui`, not cards.
 - **Use Notis theme tokens** -- `bg-background`, `bg-card`, `border-border`, `text-foreground`, `text-muted-foreground`.
-- **Use the toolkit** -- `ListReader` for list-plus-reader pages, `Section` for page sections and `Row` for rows, all from `@notis/sdk/ui`. The open record joins the top bar crumb through `ListReader` `crumbLabel`, or `useTopBarTitleLeaf(label)` on a Space's own layout (see the [notis-spaces design reference](../server/skills/notis-spaces/references/design.md)). The design defaults in the shipped skill (`server/skills/notis-spaces/references/design.md`) are enforced by `notis spaces build` through `server/config/notis_app_design_rules.json`; the only override is an inline `notis-design-allow` directive with a reason.
+- **Use the toolkit** -- `ListReader` for list-plus-reader pages, `BoardView` for items by stage (a Kanban board), `Section` for page sections and `Row` for rows, all from `@notis/sdk/ui`. The open record joins the top bar crumb through `ListReader` `crumbLabel`, or `useTopBarTitleLeaf(label)` on a Space's own layout (see the [notis-spaces design reference](../server/skills/notis-spaces/references/design.md)). The design defaults in the shipped skill (`server/skills/notis-spaces/references/design.md`) are enforced by `notis spaces build` through `server/config/notis_app_design_rules.json`; the only override is an inline `notis-design-allow` directive with a reason.
 - **Space SDK stays current**: every Space build, scaffold and `notis spaces pull` mirrors the Space SDK shipped by the running CLI into the Space's `packages/sdk` (the host-module types plus a Node-only runtime for the Space's own tests; see [Space SDK runtime contract](#space-sdk-runtime-contract-protocol-2)).
 - **Assume the portal provides theme tokens on the view host** -- Space views should feel native by consuming those tokens inside the shadow tree, not by restyling the portal shell.
 - **Keep layouts compact and dashboard-like** -- cards, tables, sections, badges. Not marketing-site heroes.
@@ -2223,7 +2223,11 @@ settings hold a legacy layout, then the App's pages with its route lists; an ope
 reads those settings once, alongside the link check, for every landing it reads.
 Only a root Space's open also reads its own root alias (its App and Set up entry).
 It follows the person's primary page or the Space's
-default, and also answers the default page's own link. The link check runs in one
+default, and also answers the default page's own link. Publishing or promoting a
+presentation release clears the Space's default page (an audited
+`update_notis_space_metadata` at its current revision, after the publication
+commits), so a former folder published as a page opens on that page; the Portal
+does not offer "Open by default" on a parent with its own page. The link check runs in one
 native read scope (`native_read_memo`): the record a record link names and the
 record param it fills are read once, and its record and schema are read together.
 For a view-plus-record link, the person's views of the record's database are asked
