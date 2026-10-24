@@ -167,6 +167,14 @@ and the Store, direct Store routes redirect to Manager, and Manager neither load
 accepts database or view mentions. When only `spaces_store` is not true, Spaces stay and
 only the Store entry, the `/store` routes (which redirect to Manager) and Publish to Store
 disappear; the server refuses Spaces Store requests with `spaces_store_unavailable`.
+When `spaces_sharing` (on top of `spaces`) is not true, Share can only take access away:
+it keeps pending invitations to withdraw, people to remove and team access to close, but
+offers no invite form, no Include sub-Spaces and no Make owner, and a Space only its owner
+can open shows Publish alone (or no Share at all without Sites). The server refuses every
+request that widens access (inviting, opening to the team or to sub-Spaces, handing over)
+with `spaces_sharing_unavailable`; withdrawing, removing, leaving and accepting never need
+it. Own domains for Sites need `spaces_sites_domains` on top of `spaces_sites`
+([Sites hosting](sites-hosting.md#rollout)).
 Active team members and owners follow the same visibility boundary. Their team
 relationship scopes shared content only after PostHog resolves the flags true.
 
@@ -804,6 +812,9 @@ Use fictional record keys and content. The harness checks the declared canonical
 native QUERY action and its input schema; it never contacts the API or provides
 body Save during offline verification. Exercise saving separately on the isolated
 stack, including first-save bootstrap, exact receipt retry and grant revocation.
+Record component fixtures (`recordViews`, including the HTML an `HtmlFrame`
+shows in previews) follow the shape in
+`server/skills/notis-spaces/references/sdk.md#offline-fixtures`.
 
 #### Provider actions: one sealed issuer grant
 
@@ -1222,13 +1233,18 @@ An Editor who reaches an automation through a link can find it
 run it manually (`LOCAL_NOTIS_RUN_AUTOMATION`, Portal Test), but never sees its bearer
 capabilities or connection details (webhook path and URL, setup claim token, provider trigger
 handles and configurations, delivery account, thread, last error): GET, LIST and UPDATE return an
-allowlisted Editor view (`EDITOR_VISIBLE_FIELDS`) while the owner sees everything. The Portal
+allowlisted Editor view (`EDITOR_VISIBLE_FIELDS`) while the owner sees everything. Shared manual
+run failures also withhold raw intake diagnostics and exceptions that may quote the owner's
+request or connection details; owner responses keep their existing diagnostics. The Portal
 Automations page stays the owner's, and an Editor's run gives them only its `run_id`. It still runs as its owner: the
 owner's identity, connections, delivery channel, plan and billing (A20). The Automations plan
 gate is checked on the owner, never the Editor (`automation_owner_plan_required` when the
 owner's plan lapses), the intake request records `AutomationInvocation` (owner, invoking
 Editor, Space and binding), and an Editor who lost the path gets `automation_not_found`
 (`server/lib/automation_access.py`). The Editor's own automations still need their own plan.
+Every Space a Skill or automation sits in is one of these links, whether the Space
+source declared it or someone added it in the Portal or CLI, so any link can be
+removed the same way; the Portal shows no Space it cannot unlink.
 Removing the last reachable Skill or automation link keeps that resource standalone
 for the remover (an active automation is paused). A database cannot lose its last
 Space link: move it with one add plus one remove, or delete it. Every revision
@@ -1276,7 +1292,8 @@ property or a wrong kind in the bound schema. A matching record becomes a page o
   the reader with the same cache scope (else no page). An `open` page answer carries no landing. The Portal (`SpaceRecordFullPage`) shows only the page, with
   no Portal or Space chrome, plus a floating Back to `exit_link` (the same view and params without the page
   param) and Share for HTML pages. Viewers and previews get no `page` and see the view as before, so keep the
-  view's own HTML and report rendering (`HtmlFrame`, `ReportFrame`) for them.
+  view's own HTML and report rendering (`HtmlFrame`, `ReportFrame`) for them. A Space page another view frames
+  (`SpacePageFrame`) shows without that floating Back and Share, see Record components in Space views (V12).
 - Sites, HTML only: for a record Site of a matching HTML page, `site-open` adds
   `page: { kind: 'html', title, html, record_key, revision }`, read through the Site's own admitted read, and the
   Site host shows that HTML alone, full screen, without loading the view. Reports, whole-Space Sites, text notes
@@ -1645,7 +1662,7 @@ also reports inactive toolbars after their shadow-root content is detached.
 
 ## SDK Reference
 
-`Dialog` is the SDK-owned native modal; apps own its content and actions. See the [SDK component reference](../server/skills/notis-spaces/references/sdk.md) for its props. Browser top-layer rendering keeps it above selection toolbars inside either rendering boundary, and SDK collection shortcuts are suspended within it.
+`Dialog` is the SDK-owned native modal; apps own its content and actions. Its styles ship in `toolkit.css`, so the card is themed inside a Space's shadow root as well as in the Portal. A confirmation passes `nativeOnTouch`: on touch-first devices (no hover, coarse pointer; never the Desktop app) the operating system's dialog asks instead, OK clicks the button marked `data-dialog-confirm` and Cancel the one marked `data-dialog-cancel` (else `onClose`), mirroring the Portal's AlertDialog. A browser with no OS dialog answers instantly and gets the card. See the [SDK component reference](../server/skills/notis-spaces/references/sdk.md) for its props. Browser top-layer rendering keeps it above selection toolbars inside either rendering boundary, and SDK collection shortcuts are suspended within it.
 
 ### Imports
 
@@ -1989,6 +2006,57 @@ When manager chat adds current-page context to a handover draft, the active reso
 
 > Apps mount inside a **Shadow DOM** in the Portal, so the SDK's keyboard handlers resolve the real focused element via `event.composedPath()[0]` (not `event.target`, which the shadow boundary retargets to the host). This is handled inside the SDK — you don't need to do anything — but it's why typing in an app `<input>` doesn't trigger selection shortcuts.
 
+### Review comments (`CommentPane`)
+
+`@notis/sdk/ui` ships the review comment pane lifted from the Notis Slides Space: threads with replies, pins and zones on the page, comments on a whole item, asks an agent waits on (a check, a choice or a text or file input), Resolve, Delete, an Open/Resolved filter and Copy changes. It reads and writes one Space database through the ordinary native hooks; there is no comment backend.
+
+The database keeps the Slides Comments columns, so an existing Comments table needs no migration: `Body` (title), `Deck` (relation to the scope record), `Slide` (relation to the anchor record), `Thread` (root record key on replies), `Author` (select), `X` and `Y` (numbers from 0 to 1), optionally `W` and `H` (a zone's width and height, from 0 to 1), `Status` (Open, Resolved or Deleted), `Needs` (none, check, choice or input), `Options` (choices separated by `|`), `Answer`, `Answered at`, `Change` (created, replied, answered, resolved, reopened or deleted), `Changed at` and `Example` (checkbox). Pass `columns` to rename any of them; `COMMENT_COLUMNS` lists the defaults. Zones are opt-in: `COMMENT_COLUMNS` leaves `w` and `h` unset, and a table that has the two number columns passes `columns: { w: 'W', h: 'H' }`.
+
+The view declares the list and its write actions: `shows.comments` on the Comments database, and a `comments` database binding whose `insert` and `update` operations name declared actions. Then one controller drives every piece:
+
+```tsx
+import { CommentPane, CommentPins, useComments } from '@notis/sdk/ui';
+
+const comments = useComments({
+  scope: deck && { id: deck.id, recordKey: deck.recordKey, name: deck.name, checkpoint: deck.lastTurnAt },
+  anchors: slides.map(s => ({ id: s.id, recordKey: s.recordKey, order: s.order, title: s.title })),
+  anchorKey: slide?.recordKey ?? null,
+  authors: ['Flo', 'Claude', 'Notis'],
+  words: { thisAnchor: { en: 'This slide', fr: 'Cette diapo' }, anchorLabel: { en: 'Slide {n}', fr: 'Diapo {n}' } },
+  onCheckpoint: at => saveDeck({ 'Last turn at': at }),
+  onSelectThread: thread => thread.anchor && openSlide(thread.anchor.recordKey),
+});
+
+<div className="relative">
+  <SlideStage slide={slide} />
+  <CommentPins controller={comments} anchorKey={slide.recordKey} />
+</div>
+<CommentPane controller={comments} />
+```
+
+- `scope` is the record comments belong to (a deck, a page); `anchors` are the records threads sit on (slides, sections). Both are optional: without anchors, comments are page-level.
+- `toggleCommenting()` (bind it to a key such as M) enters comment mode. `CommentPins` then covers the stage and takes the press itself: a click places a draft pin, and pressing and dragging marks a zone (when the zone columns are set; otherwise the pin goes where the press started). The new comment box opens either way. Zones use the Manager selection blue (`--nui-blue`). Escape leaves comment mode through the SDK escape stack.
+- The pane shows a "Comment on all of item n" button when no draft is open: it opens a comment on the whole anchor, with no pin, and saves no `X`, `Y`, `W` or `H`.
+- Copy changes puts a Markdown digest of every change since `scope.checkpoint` on the clipboard, then calls `onCheckpoint` with the copy time. A throw there rolls the checkpoint back. The `digest` option names its nouns (Deck and Slide by default).
+- Words come in English and French from `COMMENT_WORDS`; a Space overrides only its own nouns through `words`.
+- The pieces are also exported on their own (`CommentThreadCard`, `NewCommentBox`, `CommentAvatar`) with the pure helpers (`commentThreads`, `commentChangesSince`, `commentDigest`, `readCommentRow`) for a Space's Markdown export or tests.
+
+`@notis/sdk/ui` is provided by the host at run time, so a Space that uses the pane needs a Portal and Desktop release that carries it before it publishes.
+
+### Second-screen presenter (`useAudienceScreen`)
+
+`@notis/sdk/ui` ships a PowerPoint-style presenter: with two screens, the audience view goes full screen on the other screen and the Space's own window stays the presenter view. The audience window is a blank same-origin popup named `notis-presenter-audience`; the Space renders into it with a React portal from the same tree, so both windows share one state and need no messaging. The hook copies the Space's styles and theme attributes into the popup, gives it its own layer root for overlays, and listens for keys and clicks there with the same mapping as a presented `HtmlFrame`.
+
+The Portal loads Space stylesheets with anonymous CORS, matching its early stylesheet preload. The presenter snapshots their loaded CSS rules instead of downloading signed URLs again: a deck can stay open beyond a stylesheet URL's expiry and still present correctly. The snapshot preserves media restrictions and stylesheet-relative asset URLs, includes CSSOM-inserted rules, and skips disabled sheets. Unreadable or not-yet-loaded sheets retain the link fallback. After upgrading from a host that loaded opaque stylesheets, reload the Space once so its loaded rules become readable.
+
+An audience component creates observers, animation frames and paint-related timers through its element's `ownerDocument.defaultView`. The module's global `window` still belongs to the presenter; using its rendering clock can defer the audience's scale updates while that window is inactive.
+
+- **Browser**: `screen.isExtended` (no permission) says whether a second screen exists. The first `open` asks for the Window Management permission (`getScreenDetails`) and places the window on another screen, external first, then the largest. When the prompt uses up the click, `open` answers `press-again`. Full screen needs a click inside the popup, so it shows "Click to fill this screen" (or "Drag this window to the other screen" without the API) until that click. It requests page fullscreen with `navigationUI: 'hide'` so supporting browsers hide the URL bar. Dia's native popup currently retains its URL strip even after this request; page fullscreen state alone is not proof that native chrome disappeared. A screen-sized popup with browser chrome still shows that control; only page fullscreen or a borderless full-size window counts as filled. A refused fullscreen request leaves the control available to retry.
+- **Desktop**: `electron/src/presenterWindow.ts` lets only that blank, named window through the main window's open handler, opens it full screen on the display `left`/`top` point at (never the presenter's own), and hardens the child: no further popups, and navigation goes to the system browser. Nothing is asked.
+- **One screen**, or no popup support: `open` answers `one-screen` and opens nothing, so the Space presents in its own window as before.
+
+The hook ships in the host-provided toolkit, so a Space that uses it needs a Portal and Desktop release that carries it before it publishes.
+
 ### Database property types
 
 | Type | Description |
@@ -2139,6 +2207,15 @@ If the task is execution-oriented, read this document first and use the `notis-s
 If the code seems to disagree with this document, treat this file as the intended platform contract and verify the specific implementation detail before changing behavior.
 
 ## Instant-view lifecycle and cache ownership
+
+A signed-in view whose runtime receives `space_changed` retires its transport and pending
+read generations while retaining the snapshots already on screen. The host rechecks current
+access before offering Reload, including when another update was already waiting. Reload
+alone mounts the new presentation. A denied check, sign-out or actual revocation clears the
+held cache and removes the view; late answers from the retired runtime cannot restore it.
+Anonymous Sites keep their strict revocation path. Asset recovery and an outdated client
+also retain a mounted view's local draft state; a client update is an explicit action.
+
 
 `AppOpeningBoundary` owns the entire host opening sequence (lazy route module, authorized descriptor, bundle and stylesheet). It shows no fake page or dashboard skeleton. A single small indicator appears only after 150 ms of continuous preparation; handing off between stages does not restart that delay. The indicator is a compact 28px pill in the bottom-left column shared with toasts and the connection pill (which stacks above it while this device cannot reach Notis): anchored to the bottom-left corner of the non-scrolling app-view viewport (`SidebarInset`) on desktop, and to the screen at the chat launcher's baseline below 1024 px, with safe-area and keyboard clearance, opaque inverse-theme colors, a 5px Notis-green pulse, and a scaled-down layered overlay shadow. Its label is “Opening”; the recovery state stays compact with “Still opening” and Retry. The pulse respects reduced-motion preferences. It sits above app content without covering the page with a blocking layer. After 20 seconds the indicator offers recovery. Once the real app has mounted, only the app owns missing-data placeholders. Isolated Store frames report render readiness to this same parent boundary; they do not display a second host loader.
 
@@ -2479,13 +2556,14 @@ The Portal injects first-party record UI through `runtime.ui`. Source uses stabl
 Document page URLs:
 
 ```tsx
-import { DocumentEditor, RecordProperties, HtmlFrame, ReportFrame, ShareControl } from '@notis/sdk';
+import { DocumentEditor, RecordProperties, HtmlFrame, ReportFrame, ShareControl, SpacePageFrame } from '@notis/sdk';
 
 <DocumentEditor recordKey={item} />
 <RecordProperties recordKey={item} />
 <HtmlFrame recordKey={item} />
 <ReportFrame recordKey={item} />
 <ShareControl recordKey={item} />
+<SpacePageFrame href={slide.Page} title={slide.Name} className="aspect-video" />
 ```
 
 `DocumentEditor` includes database properties by default (`showProperties={false}` when composed separately),
@@ -2493,6 +2571,29 @@ live collaboration, image/file upload, and native file/report viewers. The signe
 Space must declare and link the record's database. Metadata uses native revision-checked writes; bodies use the
 purpose-scoped collaboration service. Credentials, physical bindings and uploads stay in host closures, never
 source props. Candidate preview authoring is unavailable until it can use exact declared preview actions.
+
+`SpacePageFrame` shows another Space page live, for example the page a slide's Page property links to. The
+Portal host (`portal/src/components/spaces/SpacePageFrame.tsx`) accepts only a Space view address of the
+Portal's own origin (`resolveSpacePageFrameHref` in `portal/src/lib/spacePageEmbed.ts`: a path or full http(s)
+link, no credentials, fragment, backslash or control character, and a path `parseViewPath` reads), keeps only
+the view's safe params (no `settings`, `record` or private values) and adds the embed marker `notis-embed=1`.
+The frame has no `sandbox`: the framed page is the Portal itself, with the viewer's same-origin session and
+normal permissions, and it never reads the parent. Unless `interactive`, the frame is `inert`, unfocusable and
+ignores the pointer, so the view around it keeps every click, key and swipe. Any other link renders a card
+(title, path, the reason, Open page; an outside link opens in a new tab without an opener). Verify and build
+previews have no host component, so the SDK draws the same card there and never loads a page offline.
+
+A Portal document opened framed with the marker on a Space view address (all three are needed, read once from
+the address the document opened with, `useSpacePageEmbed`) uses the `embed` protected presentation: only the
+view, without sidebar, top bar, Settings, chat, connection banner, install and update prompts or PWA restore.
+The same address opened on its own shows the full Portal. Framing is allowed for that address only:
+`next.config.ts` sends `X-Frame-Options: SAMEORIGIN` and `Content-Security-Policy: frame-ancestors 'self'` on
+the Space view rewrite pattern when the query has `notis-embed=1` and no `settings`. Every DENY entry
+(OAuth consent, agent access, CLI codes, `/usage`, `/team`, `/referrals` and any `?settings=` address) stays
+after it and keeps winning, and Portal pages that are not Space views get no framing header from the marker
+(`portal/src/lib/nextConfigOAuthSecurity.test.ts`). Electron loads the Portal from its own scheme, which its
+`frame-src` already admits, and exposes its bridge to the top frame only; the PWA service worker passes Space
+view navigations, framed or not, to the network.
 
 Inside a Space or app ShadowRoot these components (and the legacy `AppDocumentEditor`) add the Portal's
 embedded stylesheet `/embedded/blocknote.css` once to that root. Its compiled Tailwind utilities only match
