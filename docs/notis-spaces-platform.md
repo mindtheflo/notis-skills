@@ -2041,6 +2041,7 @@ const comments = useComments({
 - A thread card shows the comment's pictures in a grid (each opens in `ImageViewer`), its other files in an `AttachmentGallery`, and links in the text as host-and-path links that open in a new tab. An ask's option named like a picture (Options `Before | After` with `Before.png` and `After.png`) is answered from under that picture and from the viewer's bar. A `check` with its own `Options` offers those answers instead of Looks good and Undo.
 - Words come in English and French from `COMMENT_WORDS`; a Space overrides only its own nouns through `words`.
 - The pieces are also exported on their own (`CommentThreadCard`, `NewCommentBox`, `CommentAvatar`) with the pure helpers (`commentThreads`, `commentChangesSince`, `commentDigest`, `readCommentRow`) for a Space's Markdown export or tests.
+- To keep the pane beside a page at a width the person chooses, wrap the page in `SidePane` and pass the pane column as `pane`: the pane sits on the right with a drag edge (arrow keys, double-click resets), `storageKey` keeps the chosen width, and beside each other the page and the pane scroll on their own, so give `SidePane` a parent with a height. Below `mainMin + paneMin` (840 px by default) the pane follows the page in one column.
 
 `@notis/sdk/ui` is provided by the host at run time, so a Space that uses the pane needs a Portal and Desktop release that carries it before it publishes.
 
