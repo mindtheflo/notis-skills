@@ -128,9 +128,6 @@ Resolve the existing skill by exact id, owner and Space links (as listed by
   Read back the same id, content and preserved assignments; for bundles verify the
   full resource set. An update must not increase the installed record count.
 - Deliver the native skill link. Export a zip to the user only when requested.
-- When files change, CREATE and UPDATE also return `review_url`, a diff report the
-  user can comment on line by line (pass `change_summary` on UPDATE to explain the
-  change). Share it when the user should review the change.
 
 ## SKILL.md Frontmatter
 

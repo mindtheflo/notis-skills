@@ -774,9 +774,7 @@ six-argument link writer remains the empty-pin route; pinned binding identities
 participate in replay matching. A failure anywhere leaves the
 previous release, every Skill and every link unchanged, and a replay by request
 ID returns the same `applied` result only for the original actor while they remain
-a current Space Editor. After the commit the server publishes one
-review report per changed Skill (R6, the same intents `notis skills update`
-reviews) and returns the links; a retry returns the same links. The CLI then
+a current Space Editor. The CLI then
 rewrites the lock and `resources.json` from the applied result, so the next
 deploy diffs against the new baseline; `notis spaces promote <release-id> [dir]`
 does the same for a promoted preview.
