@@ -34,7 +34,7 @@ Public distribution is a third, read-only output rather than another runtime
 sync path. `.depot/workflows/sync-public-repositories.yml` mirrors every
 tracked `server/skills/<name>/` folder to
 [`mindtheflo/notis-skills`](https://github.com/mindtheflo/notis-skills) after a
-push to `beta`. The monorepo stays canonical; the public repository is replaced
+push to `nightly`. The monorepo stays canonical; the public repository is replaced
 from generated tracked-file snapshots and must not be edited directly. This
 layout exposes every skill as `skills/<name>/SKILL.md` for skills.sh indexing.
 The generated public repository CI validates the full collection and performs
@@ -167,12 +167,12 @@ Channel is determined by trigger:
 
 | Trigger | Channel | Source content |
 | --- | --- | --- |
-| Release of a merge to `beta` | `beta` | the released commit |
-| Release of a merge to `production` | `production` | the released commit |
+| Release of a merge to `nightly` | `beta` | the released commit |
+| Release of a merge to `stable` | `production` | the released commit |
 | Catch up now, `environment: beta` or `production` | that channel | the commit that environment serves |
 | Preview (`sync-curated-skills.yml`) | none, read only | a branch head or an exact commit |
 
-So the normal promotion path is: check the change with `--dry-run` or the preview, merge to `beta` (its release publishes the beta channel), then merge to `production` (its release publishes the production channel).
+So the normal promotion path is: check the change with `--dry-run` or the preview, merge to `nightly` (its release publishes the beta channel), then merge to `stable` (its release publishes the production channel).
 
 ### Publishing Verification
 

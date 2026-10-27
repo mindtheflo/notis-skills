@@ -353,32 +353,32 @@ Use `CONDUCTOR_PORT` only as a fallback when `.context/terminal.txt` is unavaila
 
 ### Branch and release policy
 
-Production hotfixes:
+Stable hotfixes:
 
 ```text
-production -> hotfix/... -> production
+stable -> hotfix/... -> stable
 ```
 
 Backports:
 
 ```text
-production hotfix commit(s) -> cherry-pick onto beta
+stable hotfix commit(s) -> cherry-pick onto nightly
 ```
 
 Normal releases:
 
 ```text
-beta -> production PR
+nightly -> stable PR
 ```
 
 Rules:
 
-- Branch urgent production fixes from `production`, never from `beta`.
-- Merge and deploy the hotfix to `production` first.
-- Backport the merged production hotfix commit or commits into `beta`, usually with `git cherry-pick`.
-- If `beta` has refactored the touched area, prefer a small manual re-apply on a `beta` branch instead of forcing a messy cherry-pick.
-- Keep normal release promotion as a reviewed `beta -> production` pull request.
-- Do not use `beta` as the source branch for production hotfixes.
+- Branch urgent production fixes from `stable`, never from `nightly`.
+- Merge and deploy the hotfix to `stable` first.
+- Backport the merged stable hotfix commit or commits into `nightly`, usually with `git cherry-pick`.
+- If `nightly` has refactored the touched area, prefer a small manual re-apply on a `nightly` branch instead of forcing a messy cherry-pick.
+- Keep normal release promotion as a reviewed `nightly -> stable` pull request.
+- Do not use `nightly` as the source branch for production hotfixes.
 
 ---
 
