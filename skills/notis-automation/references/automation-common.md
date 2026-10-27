@@ -16,7 +16,7 @@ An automation runs its `prompt` as a real agent turn when its trigger fires. Too
 
 Common `LOCAL_NOTIS_INSERT_AUTOMATION` fields:
 
-- `prompt` (required) — the instruction the agent runs when the trigger fires (max 5000 chars). Keep it thin, present-tense, single-run; cite a skill for real logic. Follow the two prompt rules above: **no delivery destination, no recurrence wording.**
+- `prompt` (required) — the instruction the agent runs when the trigger fires (max 5000 chars). Keep it thin, present-tense, single-run; cite a skill for real logic. Follow the two prompt rules above: **no delivery destination, no recurrence wording.** When the run saves its work (rows, a note, files, drafts), do not ask for a full report in the thread: the run replies with a short summary and links by default.
 - `trigger_type` (required) — one of `schedule`, `one_time`, `webhook`, `integration`, `database`. Cannot be changed later.
 - `name` (optional) — short label.
 - `channel` / `channel_account_id` (optional) — **where the result is delivered**; defaults to the current channel. This is the one and only place delivery is set.
