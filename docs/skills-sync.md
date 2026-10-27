@@ -119,7 +119,7 @@ Production sync also mirrors the legacy base fields:
 Runtime resolution (`resolve_curated_skill_channel`) picks the channel:
 
 - `beta` when the server is running in a development environment (the local dev stack has no channel of its own)
-- `beta` for beta users
+- `beta` for nightly users (`users.release_channel = 'nightly'`, read by `server/lib/release_channels.py::is_nightly_user`; the `users.beta` early-features setting does not pick the channel). The content channel keeps its historical name `beta`, as do the `skill_md_beta` columns.
 - `production` otherwise
 
 Then `hydrate_curated_skill_row` uses that channel's field **if set**, otherwise falls back to the base `skill_md` / `openai_skill_version`. Two consequences worth internalizing:

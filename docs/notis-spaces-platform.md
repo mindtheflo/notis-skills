@@ -1403,46 +1403,14 @@ carries no sidebar, so there the chip keeps the page's title. Native write/body 
 navigation is a fresh projection outside the immutable mutation receipt. A failed
 projection warns without misreporting an already committed write as failed.
 
-During the isolated account cutover, metadata staging and source release are
-separate checkpoints. `server/lib/space_migration_cohort.py` defaults to a dry
-run; its journal retains the exact legacy snapshot, stable Space/resource map
-and unresolved dependencies. Staging creates no provider grants and never marks
-the account ready. Retrying a staged item must preserve any subsequently
-published source or Editor changes. Reconcile a changed legacy app before
-continuing; do not reset an existing Space to its old snapshot.
-
-The operator may pass a pinned `reconciliation` decision to migration staging.
-`space_migration_reconciliation.py` accepts database IDs only through an explicit
-saved development-to-installed-app link and exact owner/alias match; it never
-falls back to an account-wide slug. Source-verified stale bundled skill IDs may
-be omitted only when missing/deleted and absent from current structured source
-declarations. Keep other active attached skills. Retain source prefix plus the
-verified archive hash, or a canonical relative-path-to-byte-hash inventory for
-legacy individual-file source, in the immutable packet. The operator verifies
-those bytes and current parent disposition before staging; a hash field alone
-is not proof. Original app arrays, database ownership and deleted skills remain
-unchanged. Missing source and unresolved aliases remain explicit, not fabricated
-dependencies or readiness claims.
-
-Native definition conversion is a separate operator-only checkpoint in
-`server/lib/native_database_conversion.py`. Require definition integrity and
-actual SQL/display parity on a frozen source/target/document fingerprint before
-applying it. The commit drains legacy writers, rechecks whole-resource authority
-and the exact packet, then changes only definition/protocol metadata. A busy
-conversion attempt returns a retryable conflict rather than waiting behind a
-busy structural lock, document writer or target-definition row. Keep the same
-verified packet after contention; changed source or data requires fresh parity.
-A passed empty-database scan is not evidence for nonempty data. Retain the original packet
-for retries; subsequent authoring requires normal native schema operations, not
-another conversion. Neither conversion nor staging certifies account readiness.
-
-Staging closes the exact legacy App protocol immediately, even before the whole
-account is ready. Install the additive migration journal before deploying its
-read gates; a failed cohort read must not enable legacy access. App detail,
-source, editing, cached runtime and final provider dispatch use the shared
-legacy gate. Workspace-database discovery and legacy Views queries separately
-exclude native-v2, non-direct and trashed definitions, including those visible
-to an unmigrated App. Legacy navigation aliases resolve current Space access;
+The account cutover from Apps to Spaces ran through operator-only modules
+(`space_migration_cohort.py` for dry-run staging and its journal,
+`space_migration_reconciliation.py` for pinned database-ID decisions,
+`native_database_conversion.py` for parity-checked definition conversion) and a
+legacy App protocol gate. They were removed with legacy Notis Apps in #2611
+(`ba579504dc`, 2026-10-17); read that commit's parent for their rules. No App
+conversion code remains; converted Spaces keep their App identity in
+`space_legacy_aliases`. Legacy navigation aliases resolve current Space access;
 they do not authorize old source or account-scoped actions.
 
 An old App page link whose Space no longer opens for this person (binned, or
