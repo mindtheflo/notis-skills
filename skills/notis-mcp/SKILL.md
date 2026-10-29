@@ -71,7 +71,7 @@ through Notis Desktop before using it from a local-capable agent surface.
 - Local app source/build/deployment commands, local files, local shell,
   debugging overrides, and credential retrieval are intentionally unavailable
   through hosted MCP. Native Store and app-management tools follow the
-  server-returned surface and PostHog visibility policy.
+  server-returned surface and feature flag visibility policy.
 - Skill administration is available on every plan, including Free. Individual
   curated skills can still declare additional paid entitlements; when one does,
   its install or execution returns the canonical upgrade-required result.

@@ -119,39 +119,20 @@ What is still tiered is the compute and the resources a Space carries. Letting *
 write and deploy the code for you needs the Cloud Computer (PRO and above). Automations
 still need PRO+.
 
-Reviewed native Space and database tools declare PostHog `spaces` for visibility and no
-plan entitlement. Once their surface allows them and `spaces` resolves true, they execute
-without a second gate. Skills, automations, and Cloud Computer work invoked during a Space
-workflow still enforce their own central entitlements.
+Reviewed native Space and database tools carry no feature flag and no plan entitlement.
+Once their surface allows them, they execute without a second gate. Skills, automations,
+and Cloud Computer work invoked during a Space workflow still enforce their own central
+entitlements.
 
-Two PostHog flags gate these surfaces (`server/lib/feature_flags.py`):
-
-- `spaces` gates Spaces, native databases, reports, their Manager mentions, database
-  automations and the curated Skills that teach them.
-- `spaces_store` gates only the Store: the `/store` page and its sidebar entry, Publish to
-  Store in a Space's sidebar menu, the Store updates section of the Spaces home, the
-  `portal_spaces/store-*` endpoints behind `notis spaces store` (the CLI onboarding brief
-  offers that fallback only when `notis spaces store list` answers), and the `list_store`
-  and `install` operations of `LOCAL_NOTIS_MANAGE_SPACE`, which refuse at execution
-  without it (the tool itself is `feature_flag: spaces`, and its `duplicate` operation
-  needs only `spaces`). It is a part of Spaces, so every Store entrypoint also requires
-  `spaces`; `spaces_store` alone opens nothing. This lets Spaces ship before the Store.
-
-The retired `store` key gated Spaces, databases and the Store together before this split.
-Current code never evaluates it: it reads a curated skill row's `store` as `spaces` (the
-sync keeps writing `store` there until production runs the split; see
-[Notis skills lifecycle](notis-skills-lifecycle.md)) and expands a local
-`FEATURE_FLAG_FORCE_ON` of `store` to `spaces,spaces_store`.
-
-After PostHog resolves `spaces=true` (and `spaces_store=true` for the Store), the Portal
-may use an active team relationship to scope Team Store listings. A team relationship
-never overrides a false, missing, or unavailable PostHog decision for Spaces or Store UI,
-tools, or skills.
+Spaces, native databases, reports, their Manager mentions, database automations, the
+Store, Sites and sharing reach every account: no feature flag gates them. A curated skill
+row or a local `FEATURE_FLAG_FORCE_ON` that still names the retired `spaces` or `store`
+keys is ignored. An active team relationship scopes Team Store listings.
 
 | Action / Notis tool | Minimum plan | Denied response |
 | --- | --- | --- |
-| Browse the Store and inspect listings | Signed-in user | No billing gate; hidden unless PostHog `spaces` and `spaces_store` allow it |
-| Reviewed native Space/database tools | No plan entitlement | Hidden unless surface + PostHog `spaces` allow them |
+| Browse the Store and inspect listings | Signed-in user | No billing gate |
+| Reviewed native Space/database tools | No plan entitlement | Hidden unless the surface allows them |
 | CLI Space source, build and publish commands | FREE | No billing gate |
 | Six native skill-management tools | FREE | Skills are an all-tier entitlement |
 | Nine native automation-management tools | PRO+ (an Editor acting on a linked automation: its owner's plan) | Canonical `automations` entitlement response; `automation_owner_plan_required` for a lapsed owner |
@@ -162,21 +143,9 @@ Trials mirror the selected plan. After a downgrade, Spaces and their data stay a
 and the CLI keeps working; only the resources that carry their own entitlement
 (automations, cloud sandbox) lock. Never delete Space data as a subscription side effect.
 
-When the PostHog `spaces` flag is false, missing, or unavailable, the Portal hides Spaces
-and the Store, direct Store routes redirect to Manager, and Manager neither loads nor
-accepts database or view mentions. When only `spaces_store` is not true, Spaces stay and
-only the Store entry, the `/store` routes (which redirect to Manager) and Publish to Store
-disappear; the server refuses Spaces Store requests with `spaces_store_unavailable`.
-When `spaces_sharing` (on top of `spaces`) is not true, Share can only take access away:
-it keeps pending invitations to withdraw, people to remove and team access to close, but
-offers no invite form, no Include sub-Spaces and no Make owner, and a Space only its owner
-can open shows Publish alone (or no Share at all without Sites). The server refuses every
-request that widens access (inviting, opening to the team or to sub-Spaces, handing over)
-with `spaces_sharing_unavailable`; withdrawing, removing, leaving and accepting never need
-it. Own domains for Sites need `spaces_sites_domains` on top of `spaces_sites`
-([Sites hosting](sites-hosting.md#rollout)).
-Active team members and owners follow the same visibility boundary. Their team
-relationship scopes shared content only after PostHog resolves the flags true.
+Sharing a Space (inviting, opening it to the team or to sub-Spaces, handing it over) is
+subject only to the Space permission checks. Own domains for Sites need the
+`spaces_sites_domains` flag ([Sites hosting](sites-hosting.md#rollout)).
 
 ---
 
@@ -556,11 +525,7 @@ Without a usable `DOMAIN_SITES` (unset, malformed, an IP address, or sharing a s
 API host) Sites are not available: `GET /portal_spaces/sites` answers `available: false`, and turning
 a Site on, for a Space or a record, is refused with `409 sites_not_available` before anything is read
 or written (`set_space_site` in `server/lib/space_membership.py`). Turning an existing Site off keeps
-working, and every Site still on stays visible with a way to turn it off. Every Site control in the
-Portal sits behind the PostHog flag `spaces_sites` (on top of `spaces`; the rollout is in
-[Sites hosting](sites-hosting.md#rollout)): without it the share panel has no Publish tab, the top bar
-no globe and Settings no Sites section, the listing answers `available: false`, and the API refuses
-every Site change but turning one off. The share panel (the Space view's top bar Share) has Share and
+working, and every Site still on stays visible with a way to turn it off. The share panel (the Space view's top bar Share) has Share and
 Publish tabs; Publish (`SpacePublishTab` in `portal/src/components/spaces/SitePublishPanel.tsx`) then
 says Sites aren't available yet instead of Publish, and keeps Unpublish for a Site still on. It
 publishes the view's own Site, the Space's or its page's (`siteFor` in `portal/src/lib/spaceSharing.ts`).
@@ -1441,8 +1406,7 @@ sidebar menu, or `notis spaces store publish`, which publishes a Space and its s
 as the next version of its listing. `notis spaces store install` installs a listing as
 the person's own independent copy, `notis spaces store update` updates an installed copy
 while keeping the person's changes (or resolves its conflicts), and
-`notis spaces store unpublish` stops new installs. The Store is gated by `spaces_store`
-(see [Core Platform Model](#core-platform-model)).
+`notis spaces store unpublish` stops new installs.
 
 ### Space-linked Skill source and materializations
 

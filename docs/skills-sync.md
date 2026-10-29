@@ -72,7 +72,7 @@ Important flags:
 
 The script discovers repo-maintained skills dynamically: **every `server/skills/<name>/` folder that contains a `SKILL.md`** (`discover_repo_skills`). Adding a new skill folder makes it syncable with no script edit. A subset — `DEFAULT_OUR_SKILLS` in the script — is marked `is_default = true` on bootstrap, which auto-installs it for eligible users; experimental/opt-in skills are intentionally left out of that set.
 
-`notis-spaces` is in that default subset and declares `feature_flag: spaces`, so it is auto-installed only for users eligible for Spaces features. It also owns the report and saved-HTML guidance in [`references/reports.md`](../server/skills/notis-spaces/references/reports.md); there is no separate `notis-reports` skill. `notis-feedback` shares the Spaces flag but is not in the default auto-install subset; it is an opt-in entrypoint to the [shared feedback reference](../server/skills/notis-spaces/references/context.md).
+`notis-spaces` is in that default subset, so it is auto-installed for every user. It also owns the report and saved-HTML guidance in [`references/reports.md`](../server/skills/notis-spaces/references/reports.md); there is no separate `notis-reports` skill. `notis-feedback` is not in the default auto-install subset; it is an opt-in entrypoint to the [shared feedback reference](../server/skills/notis-spaces/references/context.md).
 
 ### Access metadata
 
@@ -80,7 +80,7 @@ A curated skill can declare independent visibility and billing requirements in
 its `SKILL.md` frontmatter:
 
 - `feature_flag: <key>` syncs to `required_feature_flag` and hides the skill
-  unless PostHog returns true.
+  unless the flag is on for the user.
 - `required_entitlements: [...]` syncs to `required_entitlements`. Omission is
   `[]`, and legacy `skills` entries are dropped because Skills ship on every
   tier. Missing access to a declared additional capability keeps the catalog
@@ -97,7 +97,7 @@ the baseline.
 
 The sync validates both fields against canonical metadata before publishing a
 new OpenAI version. See [Notis Skills Lifecycle → Gate a curated skill on a
-PostHog flag](./notis-skills-lifecycle.md#gate-a-curated-skill-on-a-posthog-flag)
+feature flag](./notis-skills-lifecycle.md#gate-a-curated-skill-on-a-feature-flag)
 for the full mechanism and deploy ordering.
 
 ### Channel Fields
