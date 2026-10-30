@@ -31,7 +31,7 @@ Do not mix these paths:
 - CLI local-agent sync is the end-user workflow for installed skills on one authenticated local account.
 
 Public distribution is a third, read-only output rather than another runtime
-sync path. `.depot/workflows/sync-public-repositories.yml` mirrors every
+sync path. `.github/workflows/sync-public-repositories.yml` mirrors every
 tracked `server/skills/<name>/` folder to
 [`mindtheflo/notis-skills`](https://github.com/mindtheflo/notis-skills) after a
 push to `nightly`. The monorepo stays canonical; the public repository is replaced
@@ -65,7 +65,7 @@ Important flags:
 - `--channel beta|production` chooses which channel-specific fields are updated. A run only ever writes the fields for the one channel you pass (production also mirrors the legacy base fields, see [Channel Fields](#channel-fields)). There is no dev channel: the local dev stack reads beta's skills.
 - `--bootstrap` creates missing OpenAI skills and inserts or updates `curated_skills` rows when `openai_skill_id` is missing. **Required for the first publish of a brand-new skill** (which has no `curated_skills` row yet); after that, plain `sync` versions the existing skill. Bootstrap works on either channel: the insert seeds the `NOT NULL` base `skill_md`, so a first publish can go straight to `beta` without touching production. **The release never bootstraps** (see [Automated Sync](#automated-sync)).
 - `--from claude` includes the upstream document skills from `anthropics/skills`: `docx`, `pdf`, `pptx`, and `xlsx`. Where git is missing (a Render job), they come from a pinned tarball of that repository (`ANTHROPICS_TARBALL_SHA` in the script) instead of a clone. The release does not publish them.
-- `--skip-unchanged` skips a skill whose folder is unchanged since the commit recorded for the channel. It needs git and a work tree, so it refuses to run without them; the release never passes it and publishes the exact list Depot computed instead.
+- `--skip-unchanged` skips a skill whose folder is unchanged since the commit recorded for the channel. It needs git and a work tree, so it refuses to run without them; the release never passes it and publishes the exact list CI computed instead.
 - `--skill-ids name:skill_id,...` syncs against explicit OpenAI skill ids without querying Supabase.
 - `--source-sha <sha>` records the source commit alongside the channel sync metadata.
 - `--dry-run` builds the intended sync plan without writing to OpenAI or Supabase.
@@ -149,17 +149,17 @@ For upstream `skill-creator`, the sync script renames it to `notis-skill-creator
 
 ### Automated Sync
 
-Curated skills publish after each release, never on a push of their own. Once `.depot/workflows/temporal-release.yml` has made a merged commit live on `beta` or `production` (only while that environment's Depot release flag is on), its `post-release` job runs `scripts/render_post_release_jobs.py`, which starts Render one-off jobs on that environment's Temporal worker. A job runs the worker's latest build with the keys Render already holds, so Depot keeps only the Render key:
+Curated skills publish after each release, never on a push of their own. Once `.github/workflows/temporal-release.yml` has made a merged commit live on `beta` or `production` (only while that environment's release flag is on), its `post-release` job runs `scripts/render_post_release_jobs.py`, which starts Render one-off jobs on that environment's Temporal worker. A job runs the worker's latest build with the keys Render already holds, so CI keeps only the Render key:
 
 1. A `read` job runs `recorded` for the channel.
-2. Depot compares each recorded commit with the released one in git (Render builds carry no history) and keeps the skills whose `server/skills/<name>/` folder changed. An unknown or unreachable recorded commit counts as changed, and a skill a newer release already published is never taken back to an older version.
+2. CI compares each recorded commit with the released one in git (Render builds carry no history) and keeps the skills whose `server/skills/<name>/` folder changed. An unknown or unreachable recorded commit counts as changed, and a skill a newer release already published is never taken back to an older version.
 3. A `publish` job checks it runs the released commit (`RENDER_GIT_COMMIT`), runs `sync <names> --channel <environment> --source-sha <commit>`, then syncs the voice prompts. When a newer merge already replaced the build, the job skips and that merge's own run publishes.
 
 The release run shows one line for skills and one for voice: published, unchanged, skipped or failed. A failure turns its own line red while the release stays green, and the next release (or a catch-up) publishes what it missed, because the comparison always starts from what the channel last recorded.
 
 The release only versions skills that already have a `curated_skills` row. It never passes `--bootstrap` (bootstrap a brand-new skill by hand once, see the flags above) or `--skip-unchanged`, and it does not publish the upstream `anthropics/skills` skills.
 
-`.depot/workflows/post-release-catch-up.yml` ("catch up now") is the one manual run that publishes: it does the same for the commit an environment serves right now, and refuses a release that is still deploying or a worker build newer than the live release. `.depot/workflows/sync-curated-skills.yml` is only a read-only preview: it validates the selected skills at an exact commit, holds no credentials and contacts neither OpenAI nor Supabase. See [Depot rollout](depot-ci-rollout.md#post-release-cutover-and-key-removal) for the cutover and its proof run.
+`.github/workflows/post-release-catch-up.yml` ("catch up now") is the one manual run that publishes: it does the same for the commit an environment serves right now, and refuses a release that is still deploying or a worker build newer than the live release. `.github/workflows/sync-curated-skills.yml` is only a read-only preview: it validates the selected skills at an exact commit, holds no credentials and contacts neither OpenAI nor Supabase. See [Releases](ci.md#releases) for when the release publishes.
 
 Frontmatter validation imports the server entitlement catalog, which pulls in the billing stack, so the sync needs the full server requirements; the Temporal worker build installs them. From August to October 2026 the CI sync job installed only three packages, the script crashed on that import, and the default shell hid the crash, so runs passed while syncing nothing. After a long gap, compare `curated_skills.openai_skill_version_<channel>` with the release history instead of trusting a green run.
 
