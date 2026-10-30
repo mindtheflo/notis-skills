@@ -213,8 +213,6 @@ Required secrets:
 - `TWILIO_AUTH_TOKEN`
 - `STRIPE_SECRET_KEY`
 - `NOTIS_STRIPE_TEST_API_KEY`
-- `LANGFUSE_PUBLIC_KEY`
-- `LANGFUSE_SECRET_KEY`
 
 Stripe key convention:
 
