@@ -387,6 +387,21 @@ automation, and turning a Site off revokes it at once.
   Space still counts and a direct share always does. A whole-Space Site with `include_children` off
   reaches its own Space and the child Spaces its records own (`notis_site_space_reach`); page and
   record Sites ignore the setting. Both are evaluated live, so children created later follow them.
+  A sub-Space an enabled Site above already reaches has no Site of its own to offer:
+  `publishing_site` walks up parent Spaces and, for a record-owned Space, the collection Spaces
+  showing its record's database, to the top like `notis_site_space_reach`, and `GET /portal_spaces/sites`
+  returns it as `published_with` (address, whether the caller can manage it, and the Space's id and name
+  only for someone who can open that Space).
+- **Hide from this site** (`spaces.site_hidden`, default false; `space-site-hidden`,
+  `set_notis_space_site_hidden`, Editors of that Space): Notion's restricted sub-page. A hidden Space and
+  every Space below it leave every Site of a Space above it: `resolve_notis_space_access` refuses them to
+  that Site's credential and `notis_site_space_reach` leaves them out of its nav, sitemap and counts. The
+  Sites of the hidden Space itself still publish it, and sharing is unchanged. `published_with.hidden` names
+  the Site a Restore puts it back on (`notis_site_space_reach`'s `p_unhide uuid[]` reads every hidden Space on
+  the way up as shown, in one pass), and `hidden_space_id` / `hidden_space_name` the nearest hidden Space on the
+  way up that keeps that Site off it (it, or one between it and that Site) whose Restore that is, so with several each Restore names the
+  next; a Space the caller can't open stays unnamed and has no Restore there, and while hidden someone who can't open
+  the Site's Space gets no `address` either.
 - **Departures** (`member-remove`, `leave`; `server/lib/space_departures.py`):
   "Keep a copy" defaults on and gives the departing person copies of the pages,
   databases and Skills they lose, with copied automations paused. A resource of
@@ -527,6 +542,11 @@ working, and every Site still on stays visible with a way to turn it off. The sh
 Publish tabs; Publish (`SpacePublishTab` in `portal/src/components/spaces/SitePublishPanel.tsx`) then
 says Sites aren't available yet instead of Publish, and keeps Unpublish for a Site still on. It
 publishes the view's own Site, the Space's or its page's (`siteFor` in `portal/src/lib/spaceSharing.ts`).
+A view a Space opens straight onto (`landingParents` in `portal/src/lib/spaceLanding.ts`) publishes
+the outermost such Space instead (`PublishWhole` from `SpaceTopBarShare`), and lists its own Site only
+while it is on. With `published_with` set and no Site of its own on, the tab shows "Published with"
+and the link on that Site's address instead of Publish, with Hide from this site; hidden, it shows
+"Hidden from the <Space> site" with Restore above its own Publish.
 A record page the view shows with `DocumentPage` `share` on adds its record-param Site (`record_key`
 set), with a page picker when there is more than one: while it shows, the page registers in the view's
 `RecordShareSlot` (`portal/src/lib/spaceRecordShareSlot.ts`) and drops its toolbar Share, so the view
