@@ -152,7 +152,7 @@ subject only to the Space permission checks. Own domains for Sites need the
 ## Architecture
 
 ```text
-Space source (local workspace or Vercel Sandbox)
+Space source (local workspace or Cloud Computer)
   -> defineSpaces index + defineSpace definitions + views + @notis/sdk
   -> notis spaces pull / build / verify / deploy (or preview, then promote)
   -> frozen source and artifact snapshot (one app.js ES module + app.css)
