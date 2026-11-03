@@ -1178,7 +1178,13 @@ Editor or issuer read, with server-pinned params only (`execute_site_view_shown`
 `server/lib/space_record_ui.py`): a whole-Space Site uses the declared defaults (record params
 stay unset, so their conditions are left out), a record Site its pinned record and params. Any
 other params, a record context or a missing saved query action are refused (`site_params_pinned`,
-`site_record_required`, `site_record_action_required`). `useShown` answers a list this context
+`site_record_required`, `site_record_action_required`). Turning on a whole-Space Site, or the Site of
+one of its pages, checks this first (`require_site_lists_readable`, called by `set_space_site`): every
+queried list of the published view needs that saved read-only action and grant, and a whole-Space Site
+also runs each list's first-page request (declared defaults, 100 rows) through the action's inputs,
+without reading. Otherwise the switch is refused with `409 site_list_action_required` naming the lists,
+and the Publish tab says visitors can't read the view yet. Sub-Spaces the Site also shows are not checked
+there. `useShown` answers a list this context
 cannot read with `error` (never a query that never starts), and the Site host shows a refused
 read as an error notice while the Site stays open. Gate optional lists on
 `useShownAvailable(name)`. Offline
