@@ -2774,6 +2774,12 @@ grants retain their exact 8-second bytes; dispatch never upgrades them. The v4 h
 participate in the template digest, so each increased budget requires a new exact issuer grant and
 matching verified source publication. Compiling a new template authorizes and executes nothing.
 
+Adding explicit `case_indexes=True` to a 30-second request selects v5: v4's guards and budget, plus searched
+`CASE` (`CASEEXPR`, `CASEWHEN`) in native index expressions and predicates. Its result type (`casetype`) and
+collation (`casecollid`) pass the same catalog checks as every other node, and its branches still call only
+reviewed builtins. Simple `CASE x WHEN` (`CASETESTEXPR`) stays refused. Versions 1 to 4 keep their exact bytes
+and still refuse any table with a CASE index; a read needs a new v5 grant to read one.
+
 The envelope uses a read-only transaction and a fixed `pg_catalog` search path. Before the application query,
 it checks the current role and supported relation, type and index behavior. Only the compiler's reviewed SQL
 forms qualify; unsupported functions, casts, explicit sort operators and relation behavior fail closed.
