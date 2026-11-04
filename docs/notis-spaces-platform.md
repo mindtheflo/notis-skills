@@ -1691,6 +1691,8 @@ Snapshots and quotes reach the agent as explicitly untrusted reference data. The
 
 The host debounces autosave, supports Cmd/Ctrl-S, reports dirty/saving state, flushes a dirty draft when the editor unmounts, and returns the next revision from the app callback. Always pass a stable `resourceKey` when the same component position can switch between records; changing it gives each record isolated editor state. Store adapters should use optimistic concurrency (`WHERE revision = expectedRevision`) and reject conflicts rather than silently overwrite newer content. To support local image, video, audio, and file uploads, pass `onUploadFile`; persist the file in the app's own storage and return its durable URL. URL embeds work without that callback. Hosts that do not inject the rich editor fall back to an editable Markdown textarea with the same save contract.
 
+In a Space, the host registers `runtime.ui.MarkdownEditor` (`portal/src/components/spaces/SpaceMarkdownEditor.tsx`, loaded on first use) and keeps the Markdown exactly as written. It opens the value one blank-line chunk at a time: a chunk whose BlockNote export means the same Markdown becomes editor blocks, and any other chunk (raw HTML, footnotes, reference links, an image with a title) becomes a Markdown source block that shows and saves its text byte for byte. A linked image (`[![alt](src)](href)`) is an image block that keeps its link. While nothing is edited, the value handed back is the opened Markdown itself; an edit rewrites only the chunks it touched (`portal/src/lib/blockNoteFaithfulMarkdown.ts`, merged by `markdownSaveFidelity.ts`). The host and the textarea share `useMarkdownEditorDraft` (`packages/sdk/src/components/MarkdownEditor.tsx`), so autosave, Cmd/Ctrl-S, dirty and saving state and the unmount flush behave the same; if the editor cannot open the value, the same draft continues in the textarea. A Space without `onSave` (a form with its own Save) uses `onChange` and changes `resourceKey` when its edit is cancelled or saved, so the editor reopens on the value.
+
 #### Change feed (`useDatabaseSubscription`)
 
 `useDatabaseSubscription(databaseSlug, options?)` is `useDocuments` plus freshness: rows written by a skill, an automation or another device reach an open view without polling. It takes every `useDocuments` option (`filter`, `pageSize`, `offset`, `fetchAll`, `enabled`, `includeContent`) plus `subscribe` (default `true`) to keep the query but drop the feed, and returns `{ documents, rows, loading, error, refetch, live }` — `rows` is an alias of `documents`.
@@ -2001,6 +2003,32 @@ const comments = useComments({
 - To keep the pane beside a page at a width the person chooses, wrap the page in `SidePane` and pass the pane column as `pane`: the pane sits on the right with a drag edge (arrow keys, double-click resets), `storageKey` keeps the chosen width, and beside each other the page and the pane scroll on their own, so give `SidePane` a parent with a height. Below `mainMin + paneMin` (840 px by default) the pane follows the page in one column.
 
 `@notis/sdk/ui` is provided by the host at run time, so a Space that uses the pane needs a Portal and Desktop release that carries it before it publishes. Attaching files needs no change in the Space's source: once the host release that carries `runtime.spaceFiles` is live, adding the `Attachments` files column to the Comments database turns it on.
+
+#### Comments on passages of a record's text (`usePassageComments`)
+
+A Space whose comments sit on words of a text property (a subject, a Markdown body) instead of a point of a page uses the passage pieces of `@notis/sdk/ui`; they wrap `useComments`, so replies, Resolve, Delete, the Open/Resolved filter and the live feed are the same. Each comment row stores where it sits: the field (one or more columns naming it, `Field` by default), `Quote` (the selected words, up to 1000 characters), and `Prefix` and `Suffix` (up to 40 characters around them). Pass `passageColumns` to rename them; `PASSAGE_COLUMNS` lists the defaults.
+
+```tsx
+import { CommentableRichText, CommentableText, PassageCommentPane, usePassageComments } from '@notis/sdk/ui';
+
+const comments = usePassageComments({
+  scope, columns: { scope: 'Issue', anchor: null }, values: { subject, body },
+  fields: [
+    { key: 'subject', label: w('Subject', 'Objet') },
+    { key: 'body', label: w('Body', 'Corps'), markdown: true },
+  ],
+  onOpen: () => setPanel(true), onDraft: () => setPanel(true),
+});
+
+<CommentableText comments={comments} field="subject" value={subject}><FieldText ... /></CommentableText>
+<CommentableRichText comments={comments} field="body"><MarkdownEditor ... /></CommentableRichText>
+<SidePane pane={<PassageCommentPane comments={comments} onClose={() => setPanel(false)} />}>...</SidePane>
+```
+
+- `CommentableText` wraps an input or a textarea; `CommentableRichText` wraps any element holding text (`MarkdownEditor`, `Markdown`), reading only its editable area when it has one. A selection offers Comment, which opens the new comment box in the pane with the quoted words. Commented passages are tinted (a field) or highlighted (rich text, boxes drawn over the text and measured again after each edit or resize); clicking a highlight opens its thread, and opening a thread from the pane scrolls to its words and flashes them.
+- A passage is found again by its words, white space ignored; with several matches the prefix and suffix choose. When the words are gone from the value on screen (`values`, Markdown read as the words a reader sees when the field is `markdown`) or from the rendered rich text, the thread reads Text changed and lists last. Threads list open first, in reading order (`fields` order, then position).
+- `group` on a field (a language) and `group` on the hook show only the threads of the group on screen; `PassageCommentPane` with `groups` and `onGroup` links to the open threads of the other groups. `focusKey` opens the thread of one comment or reply, for a link to it.
+- New comments write the field's columns, the passage, `Author`, `Status` Open, `Needs` none, `Example` false, `Change` created, `Changed at` and the scope relation, with one request ID per intent. The pure helpers (`locatePassage`, `passageAt`, `passageOffset`, `markdownReadableText`, `readPassage`, `passageProperties`) are exported for a Space's tests or export.
 
 ### Second-screen presenter (`useAudienceScreen`)
 
