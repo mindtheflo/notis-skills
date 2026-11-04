@@ -2807,7 +2807,37 @@ Receipt replay rechecks current origin and connection authority without repeatin
 the query. PostgreSQL, its provider and privileged schema administrators remain
 the trust boundary, not a sandbox against a malicious administrator.
 
-#### Project-pinned PostHog reads
+#### Provider scope: pinned or checked
+
+Some providers answer a read for a scope (a project) that a connection either
+pins in its address or keeps as a mutable "active" setting of the signed-in
+account. A scope profile (`ScopeProfile`, `server/lib/space_read_scope.py`)
+describes one provider: its official hosts and path, the address parameter that
+pins the scope, the grant argument that fixes it and the read that answers the
+active scope. The connection is always used exactly as the person connected it;
+the pipe never edits or re-registers it and never tries another account.
+
+- **Pinned:** the address names the grant's scope. The provider enforces it on
+  every request; this is the strongest form, and its read proof keeps the exact
+  bytes grants had before checked scopes existed.
+- **Checked:** the address names no scope. The grant is issued only when the
+  active scope equals the grant's. Each run reads the active scope in the
+  grant's own Composio session and account just before the query (with the
+  contract refresh) and again just after it (`release_read`, called by
+  `execute_space_sealed_tool` before the answer leaves the sealed boundary).
+  Either mismatch fails the action with `read_scope_changed` and its own
+  message, and the answer is not kept. The proof records `scope: checked`.
+- An address naming another scope, or the scope parameter twice, is refused.
+  Other query parameters are the connection as connected and do not matter.
+
+What the checked form cannot rule out: the active scope is a setting of the
+provider account, so another client signed in as the same person can change it.
+A switch to another project and back, both between the two checks, runs the read
+on the other project without either check seeing it. The window is one read
+long, needs a second client of the same account and only exposes that account's
+own data; pinning the address closes it.
+
+#### PostHog reads
 
 Spaces can declare the connected PostHog EXEC transport with a **typed read**
 argument object: `{project_id, query, context, llm_model}` and no runtime inputs.
@@ -2815,19 +2845,22 @@ argument object: `{project_id, query, context, llm_model}` and no runtime inputs
 `command`, `connectionId`, `sendRawQuery` or a runtime project/query selector.
 The ordinary EXEC surface and its upstream annotation remain write-scoped.
 
-The Composio toolkit must be registered at the exact official MCP address with
-the fixed `project_id`; dispatch never derives a different server address. The
-read rule validates that binding and the current read-only `execute-sql` and
-`project-get` contracts before admitting the fixed query. Project settings and
-API tokens returned by metadata are discarded.
+The Composio toolkit must be registered at an official PostHog MCP address
+(`mcp.posthog.com` or `mcp-eu.posthog.com`, path `/mcp`). `?project_id=` equal
+to the template's project makes it pinned; no `project_id` makes it checked
+(see above). PostHog also documents an `x-posthog-project-id` header pin, but a
+Custom MCP registration carries one header (its sign-in), so such a server is
+read as checked. The read rule validates that binding and the current read-only
+`execute-sql` and `project-get` contracts before admitting the fixed query.
+Project settings and API tokens returned by metadata are discarded.
 
 Only the server derives `call --json execute-sql {"query":...}`. It checks the
 logical arguments against the durable invocation before binding the same
 receipt/actor/issuer/connection to the physical payload. Generic dispatch still
 compares that exact payload; unrelated EXEC commands do not gain read admission.
 Receipt replay checks current binding identity without repeating the query.
-An unpinned address needs a separate project-pinned toolkit and authorization;
-reconnecting an unpinned address alone does not establish read authority.
+Changing the address between pinned and checked changes its digest, so the
+grant refuses until an Editor authorizes it again.
 
 CLI and the warm renderer use `packages/view-renderer`; its credential-free host must be built before packaging.
 The renderer runs in a separate child of the existing collaboration service behind `/views/render`; it uses an
