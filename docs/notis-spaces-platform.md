@@ -1432,6 +1432,27 @@ the person's own independent copy, `notis spaces store update` updates an instal
 while keeping the person's changes (or resolves its conflicts), and
 `notis spaces store unpublish` stops new installs.
 
+A listing lives on one channel, and one checked submission may publish to several channels
+one after the other (the same package each time):
+
+- `public`: listed in the Store for everyone once the Store reviewer approves the version.
+  Readable signed out (`GET store-listing-public`, indexable).
+- `team`: live at once, listed and readable only for members of the publisher's team. Never
+  readable signed out.
+- `link`: live at once, never listed (`store list` and the Store page omit it), readable by
+  anyone who has the listing id, signed in or not (signed out through
+  `GET store-listing-public`, not indexable). The page names the sharer with their email.
+  Offering the link channel needs the `space_link_sharing` flag for the publisher; a Space
+  that already has a live link keeps publishing to it with the flag off.
+
+Every channel installs and updates the same way. A listing-only version (no content change)
+updates installed copies automatically, except copies installed from a `link` listing: those
+update only when their owner checks and accepts the update. `GET store-shares` answers a root
+Space's Share tab for its Owner or an Editor: each channel's listing and status, the latest
+submission, and whether the Space changed since its newest live share. The database rules live
+in the Store functions (`read_notis_space_store_listing`, `read_notis_space_store_listing_public`,
+`auto_apply_notis_space_store_updates`).
+
 ### Space-linked Skill source and materializations
 
 A Skill a Space uses has one editable definition: the native Skill itself,
