@@ -188,7 +188,7 @@ This section covers local repo setup, environment files, dev-stack discovery, an
    This links the available `server/.env`, `portal/.env`, and `website/.env` files independently from the main checkout or another local worktree. Missing env files produce warnings without blocking setup, which is expected in Cloud Agent VMs. It then creates the Python virtual environment, installs server pip dependencies, and runs `npm install` in `portal`, `server/node-server`, `electron`, `website`, and `packages/cli`.
 2. Create `.env` files.
 3. Run `./dev.sh`.
-   This starts the Python backend and Python cron workers. Add `--with-portal` for browser app testing or `--with-electron` for desktop integration; see [stack tiers](development-workflow.md#stack-tiers).
+   This starts the Python backend (dev crons are opt-in with `--with-crons`). Add `--with-portal` for browser app testing or `--with-electron` for desktop integration; see [stack tiers](development-workflow.md#stack-tiers).
 
 The full live terminal stream is written to `.context/terminal.txt`. The file is cleared on every `dev.sh` launch and deleted by `./archive.sh`.
 
