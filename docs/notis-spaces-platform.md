@@ -997,11 +997,17 @@ refused with `cloud_computer_undeclared`:
 
 ```ts
 export default defineSpace({ name: 'Workspaces', entry: './view.tsx', cloudComputer: 'shell' });
+// With long-running services (approved with the revision, like the level):
+export default defineSpace({ name: 'Video', entry: './view.tsx', cloudComputer: {
+  access: 'shell',
+  services: [{ id: 'editor', command: 'npm run serve -- --port $PORT', cwd: { space: 'source' }, ready: '/health' }],
+} });
 ```
 
 - **Declaration.** `read` returns the sanitized facts of `useCloudComputer()`; `shell` adds
-  `run` (one non-interactive command) and `upload` (one file, at most 1 MiB, written from the
-  browser's bytes, never from a URL). The manifest carries `cloud_computer`; containers cannot
+  `run` (one non-interactive command), `upload` (one file written from the browser's bytes: at
+  most 1 MiB inline, any size into the Space folder through a direct transfer, see Transfers) and
+  `importUrl` (the machine downloads a public URL itself). The manifest carries `cloud_computer`; containers cannot
   declare it; `spaces verify` names it in its summary. Source calls it through
   `useCloudComputerShell()` (`level`, `status`, `requestApproval` for either level; `run` and
   `upload` when `available`, that is `shell`) and `useCloudComputer()` (facts, plus
@@ -1056,7 +1062,10 @@ export default defineSpace({ name: 'Workspaces', entry: './view.tsx', cloudCompu
   Space Sites, which ran their author's code on the Portal origin with a signed-in visitor's
   session, now run on a separate origin on branch `spaces/sites-origin`.
 - **Audit and retries.** `POST /portal_spaces/cloud-computer` (`operation`: `status`, `approve`,
-  `facts`, `run`, `upload`) writes a `space_cloud_computer_audit` row (Space, revision, viewer,
+  `facts`, `folder`, `run`, `upload`, `import`, `job.status`, `job.logs`, `job.cancel`, `service.lease`,
+  `transfer.begin`, `transfer.status`, `transfer.commit`, `transfer.abort`; only `run`, `upload` and
+  `import` take `request_id`, and a transfer is audited at `transfer.begin` as an `upload` row with
+  request key `transfer:<session>`, its folder and its total size) writes a `space_cloud_computer_audit` row (Space, revision, viewer,
   approval, request key, command digest and first 500 characters, or upload path and size) before
   dispatch and completes it with the status, exit code and duration. Without that row nothing runs
   (`cloud_computer_audit_unavailable`). File contents are never stored or hashed. Every `run` and
@@ -1074,6 +1083,91 @@ export default defineSpace({ name: 'Workspaces', entry: './view.tsx', cloudCompu
   Commands, paths and `utf-8` upload content must be valid Unicode text (a lone surrogate is a
   400, `invalid_cloud_computer_request`). Results carry only `status`, `stdout`, `stderr`,
   `exit_code`, `message`, `code`, `truncated` (run) or `status`, `path`, `size` (upload).
+- **Space folder.** Each Space has one folder per machine, named by id:
+  `/vercel/sandbox/spaces/<space_id>/` on the Cloud Computer and
+  `~/Documents/Notis/spaces/<space_id>/` on the Desktop, each with `files/ build/ tmp/ source/` and
+  `.notis/space.json` (the readable label), plus a readable shortcut under `spaces/by-name/`
+  (`server/lib/space_folders.py`, `server/lib/sandbox_space_process.py`). A person may map a Space to
+  an existing folder instead (`space_folder_mappings`, per person, Space and target), set with
+  `notis spaces folder` or the Share tab's folder panel through `POST /portal_spaces/space-folder`
+  (`get`, `set`, `clear`; Editors only; CLI tokens allowed). `run` without `cwd` still starts in
+  `/vercel/sandbox`; `cwd: { space: '<relative>' }` starts inside the Space folder, and every Space
+  run, service and preview gets `NOTIS_SPACE_DIR` and `NOTIS_SPACE_ID`. The `folder` operation reads
+  `{ path, canonical_path, mapped }`. The shell tool takes `space_id` for the same folder from a
+  conversation, on the Cloud Computer and (through the bridge's `action.space`) on the Desktop. When
+  a Space is purged from the bin, every machine that held its folder deletes it at its next session
+  (`space_machine_folders.deletion_requested_at`; the Cloud Computer on its next shell or service
+  call, the Desktop on its next bridge connection with `space_folders_delete` and the reply
+  `space_folders_deleted`); a folder with a running job waits. Moving a Space to the bin keeps its
+  folder. The disk janitor treats a Space's `build/` and `tmp/` as reclaimable.
+- **Transfers.** Big files never pass through the API. `transfer.begin` (`dest: { space:
+  'files/...' }`, a folder inside the Space folder, and `manifest: [{ path, size, sha256 }]`)
+  answers `{ session_id, gate_url, transfer_url, pass, chunk_size, manifest }`: the pass is a
+  15-minute gate pass (`server/lib/cloud_gate.py`) that names the session, the folder and the
+  manifest's sha256. The browser PUTs `manifest`, then each part to
+  `<transfer_url>/f/<index>?offset=N` (also `<transfer_url>/<index>?offset=N`) with
+  `X-Notis-Sha256`; small files may go as one ustar batch (`POST batch`, entries named by file
+  index). The gate's CORS lists the Portal and Desktop origins. `transfer.commit` has the machine
+  check every file's sha256 and move the files into place (an existing file is replaced); a
+  missing part answers `incomplete` with the parts to send. `transfer.status` answers a fresh pass
+  and renews the session's 120-second lease, which gate traffic also renews; `transfer.abort` drops
+  the staging. The machine's journal is the durable record of the parts, so a rerun with the same
+  `session_id` (or the same manifest from the CLI) sends only what is missing. In the SDK,
+  `useCloudComputerShell().upload({ file, dest: { space: 'files/name' } })` does all of this for
+  a File or Blob above 1 MiB (below it the bridge writes it inline at the folder path), hashes
+  the file in 8 MiB reads with an incremental SHA-256 (`portal/src/lib/sha256Stream.ts`), sends 4
+  parts at a time and exposes `uploadProgress` (`preparing`, `sending`, `finishing`). The CLI side
+  is `notis cc push` and `notis cc pull` through `POST /portal_spaces/cloud-transfer` (CLI tokens
+  allowed; also a full folder inside /vercel/sandbox on the person's own machine). `import` (`url`,
+  `dest: { space: 'files/name' }`, optional `sha256`, `overwrite`) and the shell tool's
+  `LOCAL_NOTIS_UPLOAD_SANDBOX_FILE` with `url` run a stdlib downloader on the machine that resumes
+  with Range and checks the sha256 before it replaces the file. Sessions live in
+  `cloud_transfer_sessions` for 24 hours; a committed session reports its size to the byte
+  metrics as provider `direct`.
+- **Services.** `cloudComputer: { access: 'shell', services }` declares up to 4 services
+  (`id` lowercase, `command` up to 4096 characters, optional `cwd` as a machine path or
+  `{ space }`, optional `ready` path, default `/`). They are part of the approved revision: other
+  code needs a new approval before its services start. The on-machine controller writes each
+  definition into `.notis/services/` of the Space folder and a registry entry
+  `/vercel/sandbox/.notis/services/<space_id>--<service_id>.json` (`port`, `pid`, `status`,
+  `ready_path`), gives the service `PORT` (4100 to 4899, 127.0.0.1 only), `NOTIS_SPACE_DIR`,
+  `NOTIS_SPACE_ID` and `NOTIS_SERVICE_ID`, waits up to 10 minutes for its ready path, restarts it
+  after a crash (several crashes answer `failed`, reason `exited`) and starts it again after the
+  machine resumes. Release capabilities carry `cloudComputer` as the level and
+  `cloudComputerServices` as the declared ids.
+- **Leases.** A visible view holds a lease on a service: `useCloudComputerService(id)` sends
+  `service.lease { service, holder, visible }` every 30 s, and the server keeps a 120 s lease row
+  (`space_service_leases`, `server/lib/space_services.py`). The first pulse, a pulse after a lapse,
+  a service not ready yet and a confirmation older than 90 s start or check the service on the
+  machine; the others only renew the row. A hidden tab or an unmount sends `visible: false`, which
+  renews nothing, so the machine stops about two minutes after the last visible pulse. The answer is
+  `{ service, status: starting|ready|failed|released, lease_expires_at, retry_after_seconds, reason,
+  message, gate_url, pass, pass_expires_at, price: { hourly_usd, size } }`; `gate_url` and `pass`
+  are set once the service is ready on a boat machine (`server/lib/space_gate.py`) and stay null on
+  any other machine. The idle stop
+  (`attempt_idle_stop`, both the timer and the cron) asks for live leases first and answers `busy`
+  while one holds; a lease read that fails never keeps a machine awake. `CloudComputerWaking` shows
+  the waking, failed and paused states in EN and FR.
+- **Media and frames.** A video, audio or image element and a frame cannot send the Bearer pass, so
+  `service.access { service, media?, frame?, path? }` (shell level, a ready service of the viewer's
+  own boat machine) answers `{ service, gate_url, media: [{ path, url, expires_at }], frame }`:
+  up to 50 links that each open one file for ten minutes with Range (seeking), and a one-time
+  two-minute frame code. `useCloudComputerService` exposes them as `mediaUrl(path)` (issued on first
+  use, batched, renewed two minutes before they end), `media(paths)` and `frameCode(path)`.
+  `CloudComputerFrame` (from `@notis/sdk/ui`) shows the service in a frame: it loads the gate's
+  sign-in page, posts the code only to the gate origin when that page says it is ready, and the
+  gate then serves the service from its root (GATE-009), so an app built for its own origin runs
+  unchanged. The Portal origin, `notis-app://.` and `CLOUD_GATE_EXTRA_ORIGINS` may frame the gate
+  ([gate](cloud-computer-gate.md)).
+- **Jobs.** `run` with `detach: true` starts the command in the background and answers at once with
+  `{ job_id, job }`; `timeout_ms` for a job is 1000 to 21600000 (default 3600000). A job runs under a
+  machine-side runner in `/vercel/sandbox/.notis/jobs/<job_id>/` (output, exit code, cancel and
+  timeout marks; `server/lib/sandbox_jobs.py`) and holds a job lease until it ends, so the machine
+  stays up while it runs. `job.status`, `job.logs` (`offset`, up to 200000 bytes, answers `text`,
+  `next_offset`, `eof`) and `job.cancel` (TERM then KILL to its process group) read and stop it;
+  `useCloudComputerJob()` polls them. A job whose machine restarted or whose runner died answers
+  `lost`. The shell tool exposes the same through `detach`, `job_id`, `job_action` and `log_offset`,
+  and the CLI through `notis cc run --detach` and `notis cc job status|logs|cancel`.
 - **Still missing.** A Portal place that lists and withdraws the approval: today it is withdrawn
   only with `notis spaces grants revoke`, so the prompt promises only that it ends when any
   other code replaces the approved code or the viewer leaves the Space. Also the Conductor and
@@ -1662,6 +1756,9 @@ Explicit tool declarations and `useTool` calls should use canonical tool names s
 | `useNotisNavigation()` | Open a Space view by id with an optional record and declared params, or another route of the app | `toSpace(spaceId, { recordKey: row.record_key })` |
 | `useTopBarSearch(opts)` | Legacy apps only: bind the current view to the Portal-owned top-bar search input. A Space passes `search` to `ListReader` instead | `const { setLoading } = useTopBarSearch({ value, onChange })` |
 | `useCloudComputer()` | Read a few facts about the user's cloud computer | `const { facts } = useCloudComputer()` |
+| `useCloudComputerShell()` | `cloudComputer: 'shell'` Spaces: run a command (`cwd` is a folder or `{ space: '<relative path>' }` inside the Space folder; `detach: true` returns a `job_id` at once), upload a file (`{ path, content }` up to 1 MiB, or `{ file, dest: { space } }` of any size with `uploadProgress`), have the machine download a URL with `importUrl(url, { space })`, and read or stop a detached run with `jobStatus`, `jobLogs(id, { offset, maxBytes })` and `cancelJob` | `const { job_id } = await run('npm run build', { cwd: { space: '' }, detach: true })` |
+| `useCloudComputerJob(jobId, { pollMs? })` | Follow a detached run: polls its status and appends its log (2 s by default, paused while the page is hidden) until it ends, with `cancel()` and `refresh()` | `const { log, running, job, cancel } = useCloudComputerJob(jobId)` |
+| `useCloudComputerService(id, { waitSeconds? })` | Keep a service the Space declares (`cloudComputer: { access: 'shell', services: [...] }`) running while the page is visible: leases it every 30 s, lets it go when hidden or unmounted, fails after a bounded start (90 s by default) with `retry()`. `url(path)` and `fetch(path, init)` reach it through the gate with its pass; `mediaUrl(path)` gives a ten-minute link a media element opens (seeking included); `frameCode(path)` signs a frame in; `price` is the hourly price. When a start is refused only for the viewer's missing approval, `approvalRequired` is true and `allow()` opens the host prompt, then starts the service. `restoring` is true while the machine runs but is still restoring its files after a pause (the lease answers `starting` with `reason: 'restoring'`; it can take minutes). Show `<CloudComputerWaking service={result}>` (from `@notis/sdk/ui`) for the start, a restore, failure (Allow instead of Try again when only the approval is missing) and price in English and French, or `<CloudComputerFrame service="editor" path="/">` to show the service itself in a frame | `const preview = useCloudComputerService('preview')` |
 | `useBackend()` | Make direct backend requests | `const { request } = useBackend()` |
 | `useCollectionInteractions(opts)` | Standardize active-item focus, multi-selection, marquee selection, shortcuts, and semantic bulk actions | `const collection = useCollectionInteractions({ items: notes, getId: (n) => n.id })` |
 | `useMultiSelect(opts)` | Deprecated one-minor compatibility wrapper; migrate to `useCollectionInteractions` | — |
@@ -1768,6 +1865,7 @@ return available ? (
   The server reads a Skill the published source declares under `resources` through that revision's frozen binding, and any other Skill the Space links (a `skills/<alias>/` folder, `notis skills create` with a Space destination) through its current link, as the person preparing the draft: any Editor of the Space, not only its owner (`server/lib/space_skill_access.py`). The draft, Send and the run each check it again. A Skill that is unlinked, disabled or unreachable is refused as `skill_unavailable`; only a lost Space is refused as `space_unavailable`.
 - **`autoSend`** depends on the host. A Space view always opens the complete prepared message (`@App @Database… /Skill <prompt>`) for the user to read and send, and resolves `drafted`: it never submits on the user's behalf. A legacy App view submits that message only when `handover()` starts during an active user gesture such as a button click; background calls open a draft. The normal chat send path retains progress, cancellation and failed-draft recovery. `sent` requires the host's accepted submission, not merely opening the composer; absent hosts and failed submissions resolve `drafted`.
 - **`available` is honest.** Hosts without a manager chat (the offline `notis spaces verify` harness, the vite preview) leave `runtime.handover` undefined and `available` false. Keep the app's own fallback — a copyable prompt — for those, as above.
+- **It continues the item's thread.** In a Space the draft opens in the conversation the Space's thread rule matches for the item (the `record`, else the page), the same one the side chat opens there and the Space's agents wake ([thread resolver](#space-agents-and-the-item-thread-agents-useitemthread-useagentqueue)), and resolves `{ status: 'drafted', threadId }`. Pass `newChat: true` to start a new chat instead; when nothing matches, or the resolver cannot answer, the draft opens in a new chat as before.
 
 A Space's **Set up** button is this same call with its linked onboarding Skill, for example `handover({ skill: 'journal-onboarding', prompt: 'Help me set up my Journal reminders.' })`.
 Converted App roots also expose **Set up** in their sidebar row menu. Package
@@ -1791,6 +1889,36 @@ Old install ledgers omit legacy document writer IDs: the approved evidence must
 inventory and remap those too; the ledger check alone cannot establish that proof.
 Never derive this repair from a mutable
 publisher read on sidebar open or synthesize legacy App routing aliases.
+
+#### Space agents and the item thread (`agents`, `useItemThread`, `useAgentQueue`)
+
+A Space can declare agents that answer its items, most often a Comments database (truths SPC-110..112, AGT-041, AGT-042, THR-023..025):
+
+```ts
+defineSpace({
+  resources: { comments: { kind: 'database', ... }, 'address-feedback': { kind: 'skill', ... } },
+  agents: [{ id: 'editor', on: { database: 'comments', event: 'created' }, thread: 'best_match',
+             runtime: 'notis', skill: 'address-feedback', wake: 'all' }],
+});
+```
+
+- `on.database` is a database resource alias; `event` is `created` (new comments, replies and answers, default) or `changed` (any edit). `thread` is `best_match` (default) or `space`; `runtime` is `notis` (default) or `cloud_computer`; `skill` names a linked Skill; `wake` is `all` (default) or `sent` (only replies to and answers of an agent's own comments). `columns` renames the `Thread`, `Deck`, `Answer` and `Author` columns the server reads. At most 8 agents; the CLI (`space-source.js validateSpaceAgents`) and the server (`server/lib/space_agents.py`) refuse anything else at release.
+- **One thread resolver** (`server/lib/space_thread_resolver.py`) serves the side chat, `useHandover` and wake-ups. `best_match`: the person's conversation linked to the record, then the view with its params, then the view, then the Space (`thread_contexts` levels); a wake-up with no match starts a thread and links it to the item. `space`: one stored conversation per Space and person (`space_agent_threads`, atomic get-or-create through `notis_space_agent_thread`); the side chat lists it first on every page of that Space, and an archived one is replaced by the next thread started.
+- **Wake rule.** A person's comment, reply or answer on a watched database wakes the thread after 20 seconds of quiet, at most 120 seconds after the first change; several quick comments make one wake-up (`space_agent_wake_batches`, one durable batch per agent, person and item, fed beside automation dispatch by `database_automation_runtime._observe_space_agents`). Admission goes through the normal `/process_async` intake with a deterministic `InteractionId`, so a retry is the same admission, and `ReferenceThreadId` when the thread exists; the orchestrator is told which items changed and decides to resume or steer. While the agent runs, a new comment steers it the same way.
+- **Agents' own writes never wake.** Native inserts and updates an agent makes on a watched database are stamped server-side from the verified execution context (`server/lib/native_write_provenance.py`, `actor_from_context`), never from the Author column. A reply to an agent's comment wakes that agent's thread and its owner pays; any other comment wakes the commenter's own thread. Writes through the CLI or MCP (kinds `cli`/`mcp`) are not stamped, so a `cloud_computer` agent writing through the CLI can cost one extra wake-up, which its orchestrator steers.
+- **Consent.** A person's comments wake their thread only after they allowed this exact revision's agents (`space_tool_grants` tool `NOTIS_SPACE_AGENTS`, pinned to the revision digest). Until then their batches are held; `useAgentQueue().approve()` opens the host's prompt (`SpaceAgentsApproval.tsx`: only the person's click, after a short delay) and releases held batches. A Site or link credential never reaches threads or agents.
+- **Runtime.** `cloud_computer` agents receive the Space folder path from `space_dir_hook` in `server/lib/space_agent_wake.py`, which uses `server.lib.space_folders.resolve_space_dir` when present.
+- **Provenance on reads.** Rows of a watched database carry `agent: { name, thread_id?, row_id? }` when an agent created them (the thread link only for the person whose agent wrote it). `CommentPane` signs such a comment "From {name}" like a message between threads, clickable to the agent's thread.
+
+```tsx
+const { thread, open } = useItemThread(deck.recordKey);   // the thread the side chat, handover and agents share
+const queue = useAgentQueue('editor', deck.recordKey);   // Queued, Working, Waiting for you, Failed, Done
+<span>{queue.label}</span>
+{queue.approvalRequired ? <Button onClick={() => void queue.approve()}>{queue.approveLabel}</Button> : null}
+{queue.threadId ? <Button onClick={() => void queue.openThread()}>{queue.openLabel}</Button> : null}
+```
+
+`useAgentQueue` reads `/portal_spaces/agents` (`operation: 'status'`) and polls every 4 seconds while the agent is queued or working; its words come in English and French (`AGENT_QUEUE_WORDS`). `useItemThread` reads `/portal_threads` mode `item_thread`. Both answer `available: false` on hosts without the transport (Sites, links, the verify harness, the vite preview).
 
 #### Cloud computer facts (`useCloudComputer`)
 
@@ -1842,14 +1970,17 @@ Read it the way it is meant:
 
 Conductor can run a repository's recorded dev command inside any of its
 worktrees and open the exact authenticated Portal entry point. A user sandbox
-has four fixed public Vercel routes, on ports `3000`, `3010`, `3020`, and
-`3030`; those are the full route list because `Sandbox.update({ ports })`
-replaces rather than extends the existing list. The authenticated Portal bridge
-owns that list and returns each port with its `https://…vercel.run` origin.
+(Vercel or boat) has four fixed public routes, on ports `3000`, `3010`, `3020`,
+and `3030`. On Vercel those are the full route list because
+`Sandbox.update({ ports })` replaces rather than extends the existing list; on
+boat they are the machine's public host ports. The authenticated Portal bridge
+owns that list and returns each port with its public origin
+(`https://…vercel.run` or `https://…on.boat.dev`).
 
 Every sandbox command receives the compact `NOTIS_CONDUCTOR_DEV_ENDPOINTS`
-port-to-origin map plus a backend-signed `NOTIS_CONDUCTOR_DEV_CONTEXT_JWT` that
-binds the sandbox owner to those exact four origins. `dev.sh` atomically leases
+port-to-origin map, a backend-signed `NOTIS_CONDUCTOR_DEV_CONTEXT_JWT` that
+binds the sandbox owner to those exact four origins, and `NOTIS_PORTAL_ORIGIN`,
+the owner's main Portal on their release channel. `dev.sh` atomically leases
 one entry per worktree under
 `/vercel/sandbox/.notis/workspaces/dev-port-leases.json`, exports the familiar
 `CONDUCTOR_PORT` plus `CONDUCTOR_PUBLIC_URL`, and treats that port as strict: a
@@ -1861,23 +1992,54 @@ workspace keeps its slot until its dev process exits.
 After the Portal answers its local readiness probe, the worktree writes
 mode-`0600` artifacts:
 
-- `.context/portal-entry-link.txt` — the complete stable auto-auth entry URL;
-- `.context/conductor-dev.env` — shell exports for `CONDUCTOR_PORT`,
+- `.context/portal-entry-link.txt`: the complete stable entry URL,
+  `<public origin>/api/dev/portal-entry?token=<worktree secret>`;
+- `.context/conductor-dev.env`: shell exports for `CONDUCTOR_PORT`,
   `CONDUCTOR_PUBLIC_URL`, and `CONDUCTOR_PORTAL_ENTRY_URL`.
 
 The URL is not reconstructed from a port: its query contains a persistent,
-worktree-private bearer secret. `dev.sh` passes that secret only to the Portal
-process; it is not exported globally or supplied to sibling services. The
-Portal route verifies that secret, the backend-signed owner, and
-the request's exact assigned origin. It resolves the owner's canonical email
-from `user_primary_emails`, then mints a fresh one-time Supabase link on each
-browser open. This keeps
-one identical PR/comment URL usable across multiple reviewers without reusing a
-magic link. Conductor's `workspace.sh dev-status` and `dev-url` validate the URL
-and perform a non-consuming `HEAD` probe against its public route. `dev-stop`
-removes the published auth artifacts while the `dev.sh` cleanup releases the
-public slot. Four parallel worktrees are supported; a fifth fails closed until
-one is stopped.
+worktree-private secret. `dev.sh` passes that secret, the context JWT and
+`NOTIS_PORTAL_ORIGIN` only to the Portal process; the secret is not exported
+globally or supplied to sibling services. The stable URL alone never signs
+anyone in. Opening it runs this flow:
+
+1. `GET ?token=` (`portal/src/app/api/dev/portal-entry/route.ts`) checks the
+   secret, the signed owner context, the request's exact assigned origin and
+   that the owner's canonical email in `user_primary_emails` is active. It then
+   sets a random nonce in an `HttpOnly`, `Secure`, `SameSite=Lax` cookie
+   (`notis_dev_entry_nonce`, path `/api/dev/portal-entry`, 5 minutes) and
+   answers `303` to `${NOTIS_PORTAL_ORIGIN}/dev-entry?origin=…&nonce=…&context=…`.
+   Without a usable `NOTIS_PORTAL_ORIGIN` it answers `404`.
+2. The main Portal page `/dev-entry` restores the browser's Notis session
+   (signed out: through `/login` and back) and calls `POST /portal_dev_entry`
+   (`server/routers/portal_dev_entry`). The backend verifies the context JWT
+   exactly as the dev Portal does, requires its owner to be the signed-in
+   account (`403 not_owner` otherwise, shown as "this link belongs to someone
+   else"), and that the origin is one of the signed four. It returns
+   `<origin>/api/dev/portal-entry?code=<code>`: an HS256 JWT signed with the
+   same scoped secret, type `notis_conductor_dev_entry_code`, naming the owner,
+   the origin and the nonce, with a fresh `jti` and a 2-minute lifetime.
+3. `GET ?code=` on the dev Portal verifies the signature, the exact claims,
+   expiry, owner, origin, that the nonce matches the browser's cookie (timing
+   safe) and that the `jti` was never spent, then mints a one-time Supabase
+   link for the owner (`/auth/confirm?redirect=/manage&token_hash=…`) and
+   clears the cookie. Anything invalid answers `404`.
+
+So a copied link (browser history, a PR comment, a screenshot) only works in
+the owner's own signed-in browser: anyone else reaches `/dev-entry` signed in
+as themselves and is refused, and a code is single-use, lives 2 minutes and is
+bound to the nonce cookie of the browser that asked for it. Spent `jti`s are
+kept in the dev Portal's memory (one Node process); after a restart an
+unexpired code could be replayed, but only by the browser that still holds its
+nonce cookie. The context JWT travels in the `/dev-entry` URL; it binds the
+owner to the origins and is not a sign-in credential anywhere.
+
+Conductor's `workspace.sh dev-status` and `dev-url` read the stable URL and
+perform a non-consuming `HEAD` probe against its public route (`204` when the
+owner is eligible, `404` otherwise; `HEAD` never sets the cookie or mints).
+`dev-stop` removes the published auth artifacts while the `dev.sh` cleanup
+releases the public slot. Four parallel worktrees are supported; a fifth fails
+closed until one is stopped.
 
 ### Collection interactions
 
@@ -2020,6 +2182,7 @@ const comments = useComments({
 - What a file may be: PNG, JPEG, GIF or WebP pictures, PDF, Word, Excel and PowerPoint files (also the older formats and OpenDocument), RTF, and TXT, Markdown, CSV, TSV or JSON text, up to 8 MB each and 10 per comment. HTML, SVG and anything else are refused, and the bytes must be what the name says.
 - Where files live and who opens them: `runtime.spaceFiles` (Portal host, `POST /portal_spaces/database-file`, `server/lib/space_database_files.py`) checks the signed-in person is an Editor of the Space, that the view declares the database binding, that the person may insert into or update that database and that the column is a files column, then stores the bytes in the private `app-code` bucket of the App Supabase project (EU) under `native-files/v1/<opaque database folder>/<opaque object>/file.<ext>`. The row keeps the file's authenticated Storage address, which opens nothing on its own. Every native read of the rows (a Space list, `useNativeDocuments`, `LOCAL_NOTIS_DATABASE_QUERY`, `notis` database queries) returns each file of that database with an address signed for one hour, so a file opens exactly for whoever may read its row; an address copied into another database is never signed there. A signed address saved back into a row is stored as the lasting reference again. A picture whose address expired reads the comments again (at most twice a minute). The same upload request ID from the same person returns the same file; other bytes under it are refused. An agent reading a comment downloads each file from the `url` in its `Attachments` value (for example `curl -o shot.png "<url>"`) within the hour, or reads the row again for a fresh address.
 - Words come in English and French from `COMMENT_WORDS`; a Space overrides only its own nouns through `words`.
+- A comment an agent wrote is signed "From {name}" (`CommentAgentSource`) from the server's stamp (`row.agent`), never from `Author`; for the person whose agent wrote it the signature opens the agent's thread in the side chat. A Space that declares `agents` on its Comments database has its comments answered there ([Space agents](#space-agents-and-the-item-thread-agents-useitemthread-useagentqueue)).
 - The pieces are also exported on their own (`CommentThreadCard`, `NewCommentBox`, `CommentAvatar`) with the pure helpers (`commentThreads`, `commentChangesSince`, `commentDigest`, `readCommentRow`) for a Space's Markdown export or tests.
 - To keep the pane beside a page at a width the person chooses, wrap the page in `SidePane` and pass the pane column as `pane`: the pane sits on the right with a drag edge (arrow keys, double-click resets), `storageKey` keeps the chosen width, and beside each other the page and the pane scroll on their own, so give `SidePane` a parent with a height. Below `mainMin + paneMin` (840 px by default) the pane follows the page in one column.
 
