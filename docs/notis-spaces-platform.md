@@ -1920,6 +1920,49 @@ const queue = useAgentQueue('editor', deck.recordKey);   // Queued, Working, Wai
 
 `useAgentQueue` reads `/portal_spaces/agents` (`operation: 'status'`) and polls every 4 seconds while the agent is queued or working; its words come in English and French (`AGENT_QUEUE_WORDS`). `useItemThread` reads `/portal_threads` mode `item_thread`. Both answer `available: false` on hosts without the transport (Sites, links, the verify harness, the vite preview).
 
+#### Items attached to threads (`threadItems`, `useThreadItem`)
+
+A view can declare kinds of live items agents attach to a thread, such as a pull request (truths SPC-093..SPC-099, ticket NOT-514). Each kind names a read action of the same view, a title, ordered states and the actions people can run:
+
+```ts
+defineSpace({
+  actions: { read_pull_request: { tool: 'GITHUB_RUN_GRAPH_QL_QUERY', inputs: { ... }, arguments: { ... } } },
+  threadItems: { pull_request: {
+    label: { en: 'Pull request', fr: 'Pull request' },
+    inputs: { type: 'object', additionalProperties: false, required: ['owner', 'repo', 'number'],
+      properties: { owner: { type: 'string' }, repo: { type: 'string' }, number: { type: 'integer' } } },
+    read: { action: 'read_pull_request' },               // inputs default to the item's inputs by name
+    title: '#{item.number} {data.repository.pullRequest.title}',
+    url: '{data.repository.pullRequest.url}',            // https only, the panel's Open link
+    states: [                                            // first match wins; the last has no `when`
+      { id: 'merged', when: { path: 'data.repository.pullRequest.merged', equals: true }, icon: 'phosphor:git-merge', label: 'Merged', final: true },
+      { id: 'ready', icon: 'phosphor:git-pull-request', label: 'Ready to merge', needsYou: true },
+    ],
+    checks: { list: 'data.repository.pullRequest.commits.nodes.*.commit.checkSuites.nodes.*.checkRuns.nodes',
+      name: 'name', state: 'conclusion', passed: ['SUCCESS', 'NEUTRAL', 'SKIPPED'], failed: ['FAILURE', 'TIMED_OUT'] },
+    actions: { merge: { label: 'Merge', tool: 'GITHUB_MERGE_A_PULL_REQUEST', states: ['ready'], primary: true,
+      arguments: { owner: '{item.owner}', repo: '{item.repo}', pull_number: '{item.number}', merge_method: 'squash' },
+      confirm: { title: 'Merge #{item.number} into {data.repository.pullRequest.baseRefName}?', body: 'Squash merge, using your GitHub connection.', button: 'Merge' } } },
+    page: { params: { pr: '{item.number}' } },          // optional: this view draws the item in the panel
+  } },
+});
+```
+
+- **Templates and conditions.** `{item.x}` reads the attached inputs and `{data.path}` the read action's last answer; a whole-string placeholder keeps its type, `*` flattens a list. Conditions are `{ path, equals | in | exists }`, `all`, `any` and `not`; a condition on a list matches when any value does, and booleans never equal numbers. The CLI (`space-source.js validateThreadItems`) and the server (`server/lib/space_thread_items.py`) refuse anything else at release: at most 8 kinds, 12 states and 6 actions, a state cannot be both `needsYou` and `final`, and action tools must be connected app tools (no `LOCAL_`, `NOTIS_`, `COMPOSIO_`, `CUSTOM_` or `MCP_` tools).
+- **Only agents attach.** `LOCAL_NOTIS_THREAD_ITEMS` (`attach`, `detach`, `list`, `run_action`) is the only way an item joins a thread; there is no manual or automatic attach. Its `run_action` is refused for an action with `confirm`: those run only from the person's own click.
+- **Reads.** Notis reads an item through the view's sealed issuer grant as the thread owner (`server/lib/thread_items.py`): once on attach, about every minute while its thread is open (the panel asks with `refresh: true`, the server reads items older than 50 seconds), and every 15 minutes otherwise (the `refresh_thread_items` maintenance cron), and never again once a state is `final`. A failed read keeps the last state and stores the error code. Items of a deleted thread are removed by the next sweep.
+- **Needs you.** When a read moves an item into a `needsYou` state, the thread comes back to the inbox, unread, out of Done and out of Later (`bring_thread_back`, through the same `notis_return_thread_v1` return as Later, with reason `thread_item`), and the panel opens on that item. The first read on attach and reads after the person's own action never do.
+- **Actions.** A button runs the declared tool with the thread owner's own connection, through the connected app tools wrapper, after the same credit check as other connected app calls. An action with `confirm` asks once in a Notis dialog; the server refuses it without `confirmed` (428). Afterwards the item is read again.
+- **The panel and the row.** The panel (`portal/src/components/manager/threadItems/ThreadItemsPanel.tsx`) docks on the composer, one item at a time with 1/2, collapsed until an item needs the person and then as the person left it for that thread. Without `page` it shows the title, state, checks line, action buttons and Open link. The thread list shows the most urgent item's icon in the channel icon's place, with +N (`attached_items` on `/portal_threads` rows).
+
+```tsx
+// The view `page` names, framed in the panel with the page params and the reserved `threadItem` param.
+const { item, run } = useThreadItem();   // item.state, item.checks, item.actions, item.data (the last answer)
+{item?.actions.map(action => <Button key={action.id} onClick={() => void run(action.id)}>{text(action.label)}</Button>)}
+```
+
+`useThreadItem` reads `/portal_threads` mode `thread_items` with the item and this Space's id, and reads again every minute. `run` hands the action to the panel around the frame, which shows the confirmation and runs it, so the page never confirms for the person. It answers `available: false` outside a thread's panel (a page opened on its own, Sites, links, the verify harness).
+
 #### Cloud computer facts (`useCloudComputer`)
 
 A page that drives the viewer's cloud computer should not have to *infer* its state. Conductor once treated a configured repository as proof that `gh auth login` had happened, because a private clone cannot succeed without it: sound, but it cannot show an account name and cannot notice a revoked credential.
