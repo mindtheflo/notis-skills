@@ -601,12 +601,12 @@ The parts:
   with CORS for that origin, no credentials, and Authorization and Cookie removed before any other
   middleware sees them. Anything else from it is `403 site_origin_forbidden`, and every WebSocket
   handshake from it is refused (close code 1008).
-- **Local development**: a `dev.sh` stack that starts the Portal also starts the Site host and gives
-  the backend `DOMAIN_SITES=http://localhost:<SITES_PORT>`, so its Sites open at
+- **Local development**: a `dev.sh` stack started with `--with-sites` (or `--full`, or a
+  `PORTAL_MODE=prod` Portal) starts the Site host and gives the backend `DOMAIN_SITES=http://localhost:<SITES_PORT>`, so its Sites open at
   `http://<name>.localhost:<SITES_PORT>` (the port: [development workflow](development-workflow.md)).
   `PORTAL_MODE=prod` serves the export through the Worker (`wrangler dev --env dev`) instead of
-  `next dev`. A headless stack starts no Site host and gives the backend an empty `DOMAIN_SITES`, so
-  it issues no Site addresses. `*.localhost` Site hosts pair with the `localhost` Portal only in
+  `next dev`. Any other stack (headless, or a dev-mode Portal without `--with-sites`) starts no Site
+  host and gives the backend an empty `DOMAIN_SITES`, so it issues no Site addresses. `*.localhost` Site hosts pair with the `localhost` Portal only in
   development (`ENV=dev`).
 
 Remaining risk: until `notis.space` is in the Public Suffix List's private section
