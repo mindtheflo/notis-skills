@@ -42,12 +42,34 @@ The most important guides are:
 - `notis://docs/notis-query` for structured native-database queries and
   generated database upserts
 - `notis://docs/notis-automation` for reminder and automation mutations
-- `notis://docs/notis-spaces` for explicit Store app installation
+- `notis://docs/notis-spaces` for Spaces: what they hold, sharing, the Store
+  and installs
 - `notis://docs/notis-cli` when comparing the generic MCP workflow with the
   local CLI workflow
 
 Prefer the URI returned with the selected tool instead of guessing which guide
 applies.
+
+## Make a Space
+
+When the user asks to turn something (a trip, a project, a plan) into a Notis
+Space:
+
+1. Create it with `LOCAL_NOTIS_MANAGE_SPACE` (`operation: "create"`).
+2. Views (pages, maps, itineraries, dashboards, reports) are built by Notis, not
+   through this transport. In the same turn, start that work with
+   `LOCAL_NOTIS_CONTROL_THREADS` (`action: "create"`, agent Notis, medium
+   intelligence unless the user says otherwise). Its instructions name the
+   Space ID and URL and carry everything the views need: every date, place,
+   detail and choice from your conversation, since Notis cannot read it.
+3. Reply with the Space link and say Notis is building the views: they appear
+   in the Space when it finishes, and the task shows in the user's Notis inbox.
+   An accepted create is pending work: do not wait for it or report the views
+   as done. Check it later with `action: "request"` and the returned
+   `request_id` only when the user asks.
+
+Never stop at an empty Space, and never tell the user Notis cannot create or
+fill Spaces from here.
 
 ## Connections
 
@@ -70,7 +92,7 @@ through Notis Desktop before using it from a local-capable agent surface.
 - Respect the server-returned execution lane and cloud-support status.
 - Local app source/build/deployment commands, local files, local shell,
   debugging overrides, and credential retrieval are intentionally unavailable
-  through hosted MCP. Native Store and app-management tools follow the
+  through hosted MCP. Spaces, the Store and app-management tools follow the
   server-returned surface and feature flag visibility policy.
 - Skill administration is available on every plan, including Free. Individual
   curated skills can still declare additional paid entitlements; when one does,
