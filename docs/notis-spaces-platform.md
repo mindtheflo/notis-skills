@@ -850,7 +850,10 @@ limit the pipe's general final-tool support:
   limit from 1–50 and unique statuses (`draft`, `scheduled`, `processing`,
   `processed`); only an integer offset in 0–10000 varies. One-post reads allow
   only a required bounded ID matching `^[A-Za-z0-9_-]+$`. Results are checked
-  against the pinned account before projection.
+  against the pinned account before projection. Every PostForMe call goes through
+  a small per-key limiter in `server/lib/postforme.py`; a rate-limited GET, PUT or
+  DELETE waits (Retry-After, else 1/2/4 s) within 12 s per tool call, a create is
+  never repeated, and what is still rate limited fails with `error_code: rate_limited`.
 - **Better Stack:** legacy `BETTER_STACK_LIST_MONITORS` (`{page:1,per_page:50}`)
   and `BETTER_STACK_LIST_HEARTBEATS` (`{page:1}`) grants preserve their fixed page,
   connection identity/version and monitoring-field projection, excluding
@@ -2976,7 +2979,10 @@ A read the envelope's statement timeout cancels (57014) fails with the tool's `e
 (`with_read_timeout`). The Portal bridge then throws a `SpaceActionError` into the view with the reader's
 "This read took too long" message and `code: 'read_timeout'` (kept across isolated frames by
 `spaceActionFailureDetails`), instead of the generic action failure, so a view can tell a timeout apart and
-retry it (SEO Overview asks again 4 s later, at most twice). Any other failed action keeps the generic message.
+retry it (SEO Overview asks again 4 s later, at most twice). A provider call that is still rate limited
+(PostForMe) fails the same way with `error_code: rate_limited` and the bridge throws `code: 'rate_limited'`
+with the reader's "Too many requests" message, for reads and writes alike, since the call did not run.
+Any other failed action keeps the generic message.
 
 Envelope versions retain their original rules; newer authoring does not broaden an older saved grant.
 The current version admits reviewed native index expressions and predicates, plus the stock `pg_trgm` 1.6 GIN
