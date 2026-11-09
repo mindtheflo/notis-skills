@@ -1772,7 +1772,7 @@ Explicit tool declarations and `useTool` calls should use canonical tool names s
 
 The route identifies the surface; `useActiveResource()` identifies the item inside it. Apps should publish a stable id, semantic kind, human label, optional URL/revision, compact attributes, and only the current text or Markdown snapshot that would materially help answer a follow-up. The Portal stamps the installed app and view identity onto this context, so an app cannot claim another app's provenance. Publishing context is local state and does not call a tool; the selected snapshot is attached only when the user sends a chat message.
 
-Wrap selectable content in `NotisSelectionBoundary`. Copy still places ordinary `text/plain` on the clipboard, but it also carries a bounded structured quote. When pasted into Notis chat, that quote becomes its own removable context pill instead of being mixed into the user's instructions.
+Wrap selectable content in `NotisSelectionBoundary`. Copy still places ordinary `text/plain` on the clipboard, but it also carries a bounded structured quote. When pasted into Notis chat, that quote becomes its own removable context pill instead of being mixed into the user's instructions. Text copied from a `MarkdownEditor` inside the boundary is quoted too: the editor keeps its own clipboard formats and the quote holds the text it wrote. Form fields keep plain copy. Every view already quotes by default: text outside any boundary pastes as a quote named after the Space, with the view as its source, so a boundary is only needed to name a more precise resource (the innermost boundary wins). Public Sites never quote.
 
 ```tsx
 const resource = {
