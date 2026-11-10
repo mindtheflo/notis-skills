@@ -144,8 +144,8 @@ and the CLI keeps working; only the resources that carry their own entitlement
 (automations, cloud sandbox) lock. Never delete Space data as a subscription side effect.
 
 Sharing a Space (inviting, opening it to the team or to sub-Spaces, handing it over) is
-subject only to the Space permission checks. Own domains for Sites need the
-`spaces_sites_domains` flag ([Sites hosting](sites-hosting.md#rollout)).
+subject only to the Space permission checks, and so are own domains for Sites
+([Sites hosting](sites-hosting.md#rollout)).
 
 ---
 
