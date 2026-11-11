@@ -775,6 +775,12 @@ Space definition when its initial rendering invokes actions:
 }
 ```
 
+A view that opens on other tabs or pages from its params (each with its own `ViewSkeleton` region) lists
+them in the fixtures as `context.skeletonParams`, for example `[{ "tab": "timeline" }]` (at most four flat
+string objects): verification measures each one's loading skeleton too and adds its regions beside the
+opening view's, so a visitor who lands on that tab sees its own shape. The view reads the param from its
+runtime context (`context.params`), and the regions keep their own `skeletonKey`.
+
 Fixture inputs must exactly match a declared action's input schema and one case;
 unknown actions, absent cases and broad tool/request transports fail verification.
 Use fictional populated/empty cases, never exported account content or credentials.
