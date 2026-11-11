@@ -20,7 +20,7 @@ Common `LOCAL_NOTIS_INSERT_AUTOMATION` fields:
 - `trigger_type` (required) — one of `schedule`, `one_time`, `webhook`, `integration`, `database`. Cannot be changed later.
 - `name` (optional) — short label.
 - `channel` / `channel_account_id` (optional) — **where the result is delivered**; defaults to the current channel. This is the one and only place delivery is set.
-- `keep_context` (optional, default false) — `true` reuses a single pinned thread across runs; `false` starts a fresh thread each run.
+- `keep_context` (optional, default true) — `true` reuses a single pinned thread across runs; `false` starts a fresh thread each run. Leave it out: pass `false` only when the user said runs should not remember earlier ones, never by your own judgment.
 - `intelligence_mode` (optional) — `auto` (default), `low`, `medium`, or `high`.
 
 `LOCAL_NOTIS_INSERT_AUTOMATION` returns `automation_id`, the portal URLs, and — for webhooks — the `webhook_url`. Surface those to the user.
