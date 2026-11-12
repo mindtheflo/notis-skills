@@ -1098,7 +1098,7 @@ export default defineSpace({ name: 'Video', entry: './view.tsx', cloudComputer: 
   `.notis/space.json` (the readable label), plus a readable shortcut under `spaces/by-name/`
   (`server/lib/space_folders.py`, `server/lib/sandbox_space_process.py`). A person may map a Space to
   an existing folder instead (`space_folder_mappings`, per person, Space and target), set with
-  `notis spaces folder` or the Share tab's folder panel through `POST /portal_spaces/space-folder`
+  `notis spaces folder` through `POST /portal_spaces/space-folder`
   (`get`, `set`, `clear`; Editors only; CLI tokens allowed). `run` without `cwd` still starts in
   `/vercel/sandbox`; `cwd: { space: '<relative>' }` starts inside the Space folder, and every Space
   run, service and preview gets `NOTIS_SPACE_DIR` and `NOTIS_SPACE_ID`. The `folder` operation reads
