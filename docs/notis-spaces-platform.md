@@ -781,6 +781,12 @@ string objects): verification measures each one's loading skeleton too and adds 
 opening view's, so a visitor who lands on that tab sees its own shape. The view reads the param from its
 runtime context (`context.params`), and the regions keep their own `skeletonKey`.
 
+One loading skeleton is stored per release and shown to everyone who opens the Space, Site visitors included.
+Verification renders the view as an Editor, but when the Space marks parts of its view `editorsOnly` (lists,
+actions, params or columns) the skeleton is measured from the view as the public sees it (View as the public), so
+visitors never see the outline of the editors' page. A view that is wholly editor-only keeps the editors' skeleton.
+`spaces verify` reports `skeleton.audience` (`editor` or `public`) and says so in its summary.
+
 Fixture inputs must exactly match a declared action's input schema and one case;
 unknown actions, absent cases and broad tool/request transports fail verification.
 Use fictional populated/empty cases, never exported account content or credentials.
