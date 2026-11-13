@@ -1299,7 +1299,9 @@ read as an error notice while the Site stays open. Gate optional lists on
 `useShownAvailable(name)`. Offline
 verification serves lists from fixtures and the page's URL params from the fixture
 context: `"context": {"params": {"status": "inbox"}}, "shown": {"tasks": [{"params":
-{"status": "inbox"}, "result": {"rows": []}}]}` (exact params, including defaults).
+{"status": "inbox"}, "result": {"rows": []}}]}` (exact params, including defaults). A fixture
+answers the page a read asks for (`offset`, `pageSize`) out of its rows, so `allPages` reads count
+each fixture row once, as they do live.
 
 Link an existing native database, Skill or automation into a Space before
 publishing source that declares it. Links belong to the resource (R3): its own
@@ -2795,6 +2797,17 @@ layer stack).
   predev/prebuild hook) and loads it with `fetch`, because a global CSS import is merged
   into the Portal's chunks. A failed load never blocks the Space and is retried on the
   next mount. The verify renderer and harness inline the text at build time.
+  The toolkit sits in the cascade layer `components.notis-toolkit`, after
+  `components.notis-sdk` and before `utilities` (`TOOLKIT_CASCADE_LAYER` in
+  `packages/sdk/src/ui/styles.ts`), so a Space's Tailwind 4 utilities (`hidden`, `px-6`,
+  `md:flex`) override toolkit pieces the way they override SDK shell rules. A Space built
+  with Tailwind 3 emits unlayered utilities and preflight, which would then beat the
+  toolkit (its `button` reset among them), so each host passes the Space CSS to
+  `toolkitCascadeFor` and adopts the toolkit unlayered there, as before. The Portal reads
+  that from the parsed Space stylesheet (`setToolkitCascade` in
+  `portal/src/lib/toolkitStyles.ts`); the verify renderer and harness from the snapshot CSS.
+  A Space's own unlayered rules (element selectors such as `button { ... }` in its CSS)
+  also beat toolkit pieces now; a Space scopes them to its own markup when it does not mean that.
 - **Types and test runtime.** `packages/cli/scripts/build-space-sdk.js` emits `packages/cli/dist/space-sdk/`:
   declarations for the host modules, source for the bundled and build-time entries
   and their imports, no CSS, a class list (`src/tailwind-candidates.d.ts`) so the
