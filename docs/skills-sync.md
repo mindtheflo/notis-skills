@@ -265,8 +265,7 @@ Manual `skills sync` refreshes OAuth before its first settings request too.
 Successful wire-content fingerprints are saved separately from folder hashes,
 which have historically differed between server producers. An unchanged payload
 and unchanged local folder do not rewrite skills. Bundled asset changes invalidate
-the fingerprint; failed writes are never cached. External source URLs remain
-rechecked rather than caching a potentially incomplete markdown fallback.
+the fingerprint; failed writes are never cached.
 
 The CLI also owns three base skills: `notis-spaces`, `notis-query`, and
 `notis-cli`. The npm package and the Desktop build both ship them, and every CLI
@@ -402,8 +401,8 @@ port. Each API request may take up to 90 seconds (live pulls measured 32 to 45
 seconds) inside a 240-second worker deadline. Before using the bearer, the worker checks direct and symlink outside-
 write denial against a disposable canary. It runs the actual CLI sync engine,
 reads authenticated protocol-2 settings and pulls only the two contract-bound
-native references into the fixture. Unexpected cloud pushes, assignment writes
-or external bundle downloads refuse; the proof expects a fresh pull, two
+native references into the fixture. Unexpected cloud pushes or assignment writes
+refuse; the proof expects a fresh pull, two
 downloads and six namespace-scoped Claude/Cursor/Codex links. No global
 `sync_enabled` mutation is performed.
 
@@ -600,7 +599,9 @@ load-bearing for access-system failures.
 
 For curated installs, the backend resolves live content from `curated_skills` at request time. That keeps installed curated skills pointed at the shared template and channel-specific content.
 
-For bundle-backed skills, the backend hydrates bundle files from storage when possible. If bundle hydration fails, the response marks `bundle_hydration_failed` so the CLI can fall back to the available cloud skill payload.
+For bundle-backed skills, the backend hydrates bundle files from storage when possible and sends them as `bundle_files`. If bundle hydration fails, the response marks `bundle_hydration_failed` and the CLI keeps the local folder rather than overwrite it with `SKILL.md` alone.
+
+A pulled Skill is written only from what the pull carries (`bundle_files`, else `skill_md`), and the pull always sends `skill_source_url` empty: that column is provenance, never a download (SKL-058, SKL-059).
 
 The sync-pull branch runs its synchronous entitlement/database reads, bundle
 downloads, ZIP processing, and timestamp writes in a worker thread. None of
@@ -627,7 +628,7 @@ Existing local skills with unchanged folder hashes are not re-versioned. The bac
 
 The CLI writes cloud skills atomically:
 
-- bundle downloads are extracted into a temporary directory first
+- the Skill's files are written into a temporary directory first
 - existing skill directories are moved aside as backups during replacement
 - backups are restored if promotion fails
 - bundle file paths are validated to prevent writes outside the skill directory
