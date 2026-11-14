@@ -3043,7 +3043,11 @@ the host proof. A changed read decision requires a new exact issuer grant.
 
 Supabase MCP `execute_sql` actions are not read-only merely because their text starts with `SELECT`.
 Platform authoring uses `server.lib.space_sql_reads.compile_template` before source packaging to produce
-a versioned, canonical read envelope. Its complete SQL participates in source, template, grant and invocation
+a versioned, canonical read envelope. Space authors reach it through `notis spaces verify`: the CLI sends each
+action whose query starts with a read header line to `POST /portal_spaces/sql-reads` (`author_read`), which compiles
+a header line plus plain SELECT with that header's envelope (v3, v4 or v5) and checks an already compiled read for
+every input combination as its grant would; the CLI verifies and publishes the compiled manifest in memory, so
+the source keeps the plain query. Its complete SQL participates in source, template, grant and invocation
 digests; execution never silently wraps a different query. Changed templates require rebuilding and verifying
 the authored source. Unsupported statements remain ordinary actions, unavailable to a read-only renderer.
 
