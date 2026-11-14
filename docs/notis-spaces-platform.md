@@ -636,8 +636,8 @@ These implementation boundaries still require source rebuilds and live
 Portal/Desktop acceptance before declaring a migrated account ready.
 
 Each database binding in the source-visible descriptor may name a generic
-`operations` entry per operation, the adapter that `useNativeDocuments` and
-`useNativeMutation` call. It is always one declared, currently granted action:
+`operations` entry per operation, the adapter that `useNativeDocuments`,
+`useNativeCount` and `useNativeMutation` call. It is always one declared, currently granted action:
 the only one for that binding and operation, or, when a binding declares several,
 the single one whose request is the unconstrained native transport (an open
 `{type: "object"}` request or exactly the generic tool's request schema). Narrower
@@ -1372,7 +1372,7 @@ without it), at most one per view. `where` is the native filter of
 |---|---|
 | columns `record_key`, `id` | `equals`, `not_equals`, `in` |
 | columns `content_type`, `file_type`, `title` | `equals`, `not_equals`, `is_empty`, `is_not_empty` |
-| select and status properties | `equals`, `not_equals`, `is_empty`, `is_not_empty` |
+| select and status properties | `equals`, `not_equals`, `in`, `is_empty`, `is_not_empty` |
 | checkbox properties | `equals`, `not_equals` |
 
 `spaces build` checks the shape (and property kinds when the database is created in the same release);
