@@ -899,7 +899,11 @@ arguments and variable names. It ignores the row ID and name, header and variabl
 values, the tool restriction, Test results, sign-in state and tokens, OAuth client
 settings, label, description, the Composio binding columns and any later column, so
 a Test, a Reconnect, a key rotation, a rename and the nightly refresh keep the grant,
-and each call runs with the server's current account and toolkit (a desktop
+and each call runs with the server's current account and toolkit. The pin's account
+identity (`identity`, `identity_parts`) is followed too, for the same account as for
+a Reconnect's new one: the nightly refresh rewrites that account in place (its client,
+scope string or tenant fields), and comparing it exactly refused every read of the
+Space until it was published again (a desktop
 server's grant keeps its pinned row and upstream tool, so its action name does not
 change with the server's name). A pin issued with
 a sign-in never runs accountless and a `NO_AUTH` pin never gains one; a lost sign-in
@@ -923,6 +927,12 @@ active refuses calls until that account is active again, while a different accou
 a cleared account, a renamed label, changed permissions or a deleted row disables the grant
 (`notis_space_postforme_connection_changed`). A disabled grant never comes back;
 the Space needs a new authorization.
+
+A refused read tells the caller what clears it. The Portal shows "reconnect the
+integration in Integrations, or publish the Space again" for a
+`connection_unavailable` result, and a render answers `render_read_unavailable`
+(409) with the read's `action_id` and its `reason` code
+(`view_render_access.refused_read_error`), never `render_access_changed`.
 
 #### Viewer reads: explorer Spaces see what the viewer can open
 
