@@ -809,6 +809,15 @@ Record component fixtures (`recordViews`, including the HTML an `HtmlFrame`
 shows in previews) follow the shape in
 `server/skills/notis-spaces/references/sdk.md#offline-fixtures`.
 
+Fixture `images` map an https URL the fixture rows hold (a files or URL property,
+a cover) to an image file relative to the fixtures (`.png`, `.jpg`, `.webp`,
+`.gif` or `.avif`, in the fixture file's folder or below it, at most 32 of 2 MB
+each and 16 MB in all, under the renderer's 32 MB asset budget). The build adds
+those files to the frozen source, so they publish with it; the offline renderer
+allows only those URLs' paths in its image policy and serves their bytes through the fixture broker's `asset` read
+(`createSpaceFixtureEngine` in `packages/cli/src/runtime/space-test-server.js`).
+An image a fixture render cannot load fails verification with its URL named.
+
 #### Provider actions: one sealed issuer grant
 
 A declared action can target any final tool available to its issuer through the
