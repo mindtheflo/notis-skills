@@ -1,6 +1,9 @@
 ---
 name: notis-browser-control
 description: Use when a task needs browser automation through agent-browser in either a local shell or the Cloud Computer, and when the agent must choose the right runtime for that browser work.
+mcp_resource: true
+mcp_tool_patterns: []
+mcp_references: ["references/browser-help.md", "references/profile-and-state.md", "references/local-browser.md", "references/sandbox-browser.md"]
 ---
 
 # Notis Browser Control Skill
