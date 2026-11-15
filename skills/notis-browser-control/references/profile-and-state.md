@@ -55,6 +55,21 @@ agent-browser --profile ~/.notis-agent-browser/main state load ~/.notis-agent-br
 agent-browser --profile ~/.notis-agent-browser/main open https://www.example.com/dashboard
 ```
 
+### Idle Shutdown
+
+The agent-browser daemon exits after 1 hour without a command (headed windows
+are exempt), and a headless sign-in it held, such as a Notis sign-in link
+session, goes with it. For a check that can sit idle longer, launch the daemon
+with `--idle-timeout 4h` (or `AGENT_BROWSER_IDLE_TIMEOUT_MS=14400000`; `0`
+disables it). The value is read only when the daemon starts: a running daemon
+ignores it with a warning, so run `agent-browser close` (with the same
+`--session`, if you use one) and open again with the flag. Close the session
+when the check ends.
+
+```bash
+agent-browser --profile ~/.notis-agent-browser/main --idle-timeout 4h open https://www.example.com/
+```
+
 Treat `~/.notis-agent-browser/` as credential material. Never commit it,
 never copy it out of the user's machine, and never write secrets into the
 shell history (use the auth vault for credential-based login).
