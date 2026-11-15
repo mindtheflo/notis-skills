@@ -33,6 +33,10 @@ History restores immutable view source as another publication, under current
 Editor authority and revision checks. Native records, linked Skills, sharing
 and credentials remain current. An agent must retain its before-version to
 undo its own last change; it must not guess from another Editor's latest entry.
+History lists published versions only: a candidate `notis spaces preview` sealed
+and nobody promoted (still `ready`, or abandoned) is not a version, even after
+newer publications; promoting it publishes that revision and lists it. A listed
+version is `restorable` only when a published release holds its saved source.
 
 Store Update hands the exact install to an agent. A sent request is only
 **started**, not an applied update or restored customization. Preserve local
