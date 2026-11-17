@@ -1,6 +1,6 @@
 ## Sandbox Shell Browser Control
 
-Use this when the browser should run in the Vercel Sandbox.
+Use this when the browser should run on the user's Cloud Computer.
 
 Sandbox browser control is isolated. It cannot access the user's local Chrome
 profiles, cookies, browser tabs, extensions, host keychain, or desktop UI. Do
@@ -9,8 +9,12 @@ main browser profile there.
 
 ### Basic Sandbox Session
 
-The sandbox uses the same canonical profile name (`main`), even though the
-sandbox is isolated and starts empty on every run:
+The sandbox uses the same canonical profile (`~/.notis-agent-browser/main`).
+It lives on the Cloud Computer's own disk, which is kept while the computer
+sleeps, so lasting cookies and saved state from an earlier run are still
+there. A session-only cookie ends when the browser closes, so save state
+right after sign-in and at the end of the run. It is still isolated from the
+user's own browser:
 
 ```bash
 npm exec --yes --package agent-browser@latest -- agent-browser install

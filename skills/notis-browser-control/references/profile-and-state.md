@@ -77,8 +77,9 @@ shell history (use the auth vault for credential-based login).
 ### 1Password Service Account Fallback
 
 When the same site needs to be reached from both `local_shell` and
-`sandbox_shell`, the persistent Notis profile only covers the local side —
-the sandbox starts cookie-empty on every run. The portable option is the
+`sandbox_shell`, each runtime keeps its own Notis profile: a sign-in saved
+on the user's computer is not on the Cloud Computer, and the other way round.
+The portable option is the
 **1Password Service Account** (`op` CLI with `OP_SERVICE_ACCOUNT_TOKEN`).
 
 Flow:

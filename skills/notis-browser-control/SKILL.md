@@ -66,7 +66,10 @@ Local shell browser control:
 Sandbox shell browser control:
 
 - runs in the isolated Cloud Computer
-- starts cookie-empty on every run
+- keeps its `~/.notis-agent-browser/main` profile on the Cloud Computer's disk,
+  so sign-ins saved there are still there on the next run, also after the
+  computer slept (a session-only cookie ends when the browser closes: save
+  state right after sign-in and at the end of the run, as for local)
 - cannot access the user's real browser profile, host keychain, local
   cookies, local tabs, or local extensions
 - can authenticate to Notis with its Portal sign-in-link tool; other sites use
