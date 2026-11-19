@@ -2005,6 +2005,57 @@ const { item, run } = useThreadItem();   // item.state, item.checks, item.action
 
 `useThreadItem` reads `/portal_threads` mode `thread_items` with the item and this Space's id, and reads again every minute. `run` hands the action to the panel around the frame, which shows the confirmation and runs it, so the page never confirms for the person. It answers `available: false` outside a thread's panel (a page opened on its own, Sites, links, the verify harness).
 
+#### Functions (`functions`, `useFunction`, `threadHooks`, `commentOptions`)
+
+A Space can ship its own server-side code: named functions that run on Notis for one caller. A function is the place for logic a declared action cannot express (several actions in a row, a decision between them, a command on the caller's cloud computer, a built-in thread action).
+
+```ts
+import { defineSpace, threadHookInput } from '@notis/sdk';
+
+export default defineSpace({
+  functions: {
+    settle_workspace: {
+      description: 'Remove the workspace of a merged pull request and archive its thread.',
+      kind: 'action',                       // read | write | action
+      input: { type: 'object', additionalProperties: false, required: ['thread'],
+               properties: { thread: { type: 'string' } } },
+      expose: ['page', 'agents'],           // page | api | agents; none of them: internal only
+      access: ['editor'],                   // public | viewer | editor | key; default editor
+      uses: { actions: ['read_pull_request'], cloudComputer: 'shell', threads: ['archive'] },
+      handler: './functions/settle-workspace.ts',
+    },
+    on_archive: { description: 'Run the repository archive command.', kind: 'action', input: threadHookInput,
+                  uses: { cloudComputer: 'shell' }, handler: './functions/on-archive.ts' },
+  },
+  threadHooks: { archive: 'on_archive' },
+  // A thread item action runs a function instead of a connected app tool:
+  // actions: { settle: { label: 'Settle', function: 'settle_workspace', arguments: { thread: '{item.thread}' } } }
+});
+```
+
+```ts
+// functions/settle-workspace.ts
+import type { SpaceFunctionHandler } from '@notis/sdk';
+
+const handler: SpaceFunctionHandler<{ thread: string }, { settled: boolean }> = async (input, ctx) => {
+  const pull = await ctx.actions.read_pull_request({});            // only actions named in uses.actions
+  if (!(pull as { merged?: boolean }).merged) throw new Error('Merge the pull request first.');
+  await ctx.cloudComputer.run({ command: 'scripts/archive.sh', cwd: 'repo' });
+  await ctx.threads.archive(input.thread);                          // only operations named in uses.threads
+  return { settled: true };
+};
+export default handler;
+```
+
+- **The contract.** `server/lib/space_functions.py` validates the declaration at verify and publish, and the CLI mirrors it (`packages/cli/src/runtime/space-functions.js`). `kind` is what agents and API clients are told: `read` changes nothing (it may run only actions the server classified as reads, never a thread action or a shell command), `write` changes data without a thread action or a shell command (announced as open-world when it runs the Space's actions, which may reach a provider), `action` reaches outside (destructive and open-world hints). `input` is a closed JSON schema; `output` is optional and checked. A function without `expose` is reachable only from a thread item action, a thread hook or a comment option.
+- **The build.** A `handler` path is relative to the Space's definition file, and `threadHookInput` and `commentOptionInput` come from `@notis/sdk/config` like `defineSpace`. `notis spaces build` bundles every handler into one module, `functions/index.js` (at most 1 MB, no `node:` or `cloudflare:` imports, no value import of `@notis/sdk`), stored with the release like the page bundle and never served to a browser.
+- **Where it runs.** `server/lib/space_function_runs.py` checks the caller against `expose` and `access`, checks the input, loads the handler module of that exact revision and hands the run to the functions Worker (`functions-worker/`, Cloudflare): one Durable Object per Space, created in the EU, that keeps the Space's modules by digest and runs the handler in its own isolate with no network and no secrets. A run lasts at most 60 seconds and makes at most 50 calls.
+- **What a handler reaches.** Only `ctx`: each `ctx.actions.<id>()`, `ctx.cloudComputer.*` and `ctx.threads.*` call goes back to the Notis API (`POST /portal_spaces/function-callback`) with the run's encrypted token, and the API checks it against `uses` again. An action runs through the same sealed pipeline as a page's (`execute_space_action`), with the caller as actor and the Space's saved grants, so its provider cost is billed as any Space action; running the code itself is not billed. The cloud computer is the signed-in caller's own, with that person's approval of the revision. A thread action reaches only a thread one of this Space's items is attached to. A Site visitor or a Space key has no cloud computer and no threads.
+- **Who calls.** A page with `useFunction(name)` (`{ call, loading, error, available }`; `useFunctionQuery` for reads), through `POST /portal_spaces/function`; the descriptor's `runtime.functions` names only the functions that caller may run from a page. Agents with `LOCAL_NOTIS_SPACE_FUNCTIONS` (`list`, `call`) for functions exposed to `agents`. A thread item action that names `function` instead of `tool` runs it as the thread owner with `ctx.item` (the item and its thread); a hosted external agent runs such an action only when the function is exposed to `agents`. A signed-in caller's retried write or action keeps its `request_id`, so the run and each of its actions replay their receipts instead of running twice; a Site visitor's run is always its own and counts against the Site's hourly action limit. A function that uses the cloud computer is never run with a CLI token, like the page's own cloud computer calls.
+- **Thread hooks.** `threadHooks` maps a built-in thread action (`archive`, `unarchive`, `read`, `unread`, `star`, `unstar`, `later`, `back`, `delete`) to a function whose input is exactly `threadHookInput` (`{ event, actor, thread, items }`). After that action on a thread that holds one of the Space's items, the function runs as the thread's owner, in the background (`server/lib/space_thread_hooks.py`): a hook never delays, changes or undoes the action, and a failing hook is logged. A change a Space's own function made does not run that Space's hooks, and a change a hook made runs no hook in any Space, so hooks never answer each other without end. A thread that a reply brings back fires `unarchive`, `back` or both, for what it left. `actor` is `person` for the person's own hand (the Portal, a Space view, the CLI), `agent` for one of their agents and `notis` for an automatic change or another Space's function. Hooks follow the `thread_items` flag. Changes that bypass thread control (the floating chat's direct writes) run no hook yet.
+- **Comment options.** `commentOptions` maps an option id to `{ label, function }`, the function taking `commentOptionInput`. When a person picks that label (in any of its languages) among a choice comment's options, the function runs as that person, after the answer is stored. An agent's own answer and free text never run it.
+- **Operating it.** The API reaches the Worker with `SPACE_FUNCTIONS_RUNNER_URL` and `SPACE_FUNCTIONS_RUNNER_SECRET` (the Worker's `RUNNER_SECRET`); without them every call answers `functions_unavailable` (503) and nothing else changes. Nightly and stable each have their own Worker (`wrangler deploy --env nightly`, `wrangler deploy`). A dev stack uses the nightly Worker (`server/.env` holds its two values) and must be started with `--with-ngrok`, because the Worker calls back the stack's public address. `npm run dev` in `functions-worker/` (with `RUNNER_SECRET` in `.dev.vars`) runs the Worker alone on this machine, for work on the Worker itself.
+
 #### Cloud computer facts (`useCloudComputer`)
 
 A page that drives the viewer's cloud computer should not have to *infer* its state. Conductor once treated a configured repository as proof that `gh auth login` had happened, because a private clone cannot succeed without it: sound, but it cannot show an account name and cannot notice a revoked credential.
