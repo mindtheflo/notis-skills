@@ -1560,8 +1560,8 @@ lifecycle, with its existing restoration window.
 
 `notis spaces deploy` updates one existing Space and never publishes to the Store. Store
 publication is a separate, explicitly approved action: Publish to Store from a Space's
-sidebar menu, or `notis spaces store publish`, which publishes a Space and its sub-Spaces
-as the next version of its listing. `notis spaces store install` installs a listing as
+sidebar menu, or `notis spaces store publish`, which publishes what the Space's source lists
+(below) as the next version of its listing. `notis spaces store install` installs a listing as
 the person's own independent copy, `notis spaces store update` updates an installed copy
 while keeping the person's changes (or resolves its conflicts), and
 `notis spaces store unpublish` stops new installs.
@@ -1586,6 +1586,45 @@ Space's Share tab for its Owner or an Editor: each channel's listing and status,
 submission, and whether the Space changed since its newest live share. The database rules live
 in the Store functions (`read_notis_space_store_listing`, `read_notis_space_store_listing_public`,
 `auto_apply_notis_space_store_updates`).
+
+### What ships
+
+A root Space's own `defineSpace` lists exactly what goes to the Store (truths SPC-150 to
+SPC-152); anything unlisted stays in the publisher's account, including a sub-Space or link
+added later:
+
+```ts
+store: { ships: { coding: ['repositories'], workspaces: ['workspaces', 'new-workspace'] } }
+```
+
+- Keys are source keys (the manifest's `local_key`): the root's own key is required, and each
+  sub-Space that ships is listed with the aliases of its linked items (`space_assets` aliases:
+  databases, Skills, automations, pages). A listed sub-Space whose parent is not listed is
+  refused (`store_ships_parent_private`), so every Space between the root and a shipped one needs
+  published source (a Portal folder without source has no key to list); a key or alias the live
+  tree lacks is refused (`store_ships_unknown`), and a key two sub-Spaces share (a copy built from
+  the same source) is refused (`store_ships_ambiguous`); the root's own key is always the root.
+  A listed database whose record view stays private is refused (`store_ships_main_view_private`).
+  Spaces inside records are never listed: they travel with their record. Only the owner gets an
+  answer about the list: an Editor gets `store_owner_required`, anyone else `space_unavailable`.
+- Only the published root's own list counts. `notis spaces build` writes it to the manifest
+  as `store`, keys and aliases sorted, and leaves the field out when undeclared, so existing
+  manifests are unchanged; `collectSelectedSpaceSource` rewrites `notis.config.ts` for the
+  deployed Space alone, so the list lives on `defineSpace`, never on `defineSpaces`.
+- Without a list every publish is refused with `store_ships_undeclared` (409), updates of
+  existing listings included, and `store_prepare` refuses before copying anything.
+- `server/lib/space_store_ships.py` resolves the list on the live tree (by `parent_space_id`)
+  into Space and link ids. The submission's test copy, scan and screenshots, the dry run and
+  the stored package all come from `export_notis_space_package_v2` with those lists; every
+  unlisted link of a shipped Space is in the package's `omitted` with reason `private`.
+  Duplicates and departures keep exporting everything with `export_notis_space_package`.
+- A shipped view bound to a database that stays private is a red `view_database_private`
+  finding (`view_item_private` for a Skill, automation or page), so the publish is refused,
+  naming the view and the database; `notis spaces build` refuses the same for the listed Spaces
+  its workspace defines.
+- The submission page ("What ships / Stays private"), `LOCAL_NOTIS_MANAGE_SPACE`
+  (`store_prepare`, `store_submission_read`, `store_submission_update`: `ships`) and
+  `notis spaces store publish` (and `--dry-run`: `ships`) name both lists.
 
 ### Space-linked Skill source and materializations
 
