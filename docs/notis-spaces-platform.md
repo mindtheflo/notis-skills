@@ -1835,6 +1835,7 @@ Explicit tool declarations and `useTool` calls should use canonical tool names s
 | `useNotisNavigation()` | Open a Space view by id with an optional record and declared params, or another route of the app | `toSpace(spaceId, { recordKey: row.record_key })` |
 | `useTopBarSearch(opts)` | Legacy apps only: bind the current view to the Portal-owned top-bar search input. A Space passes `search` to `ListReader` instead | `const { setLoading } = useTopBarSearch({ value, onChange })` |
 | `useCloudComputer()` | Read a few facts about the user's cloud computer | `const { facts } = useCloudComputer()` |
+| `useConnection(toolkit)` | The viewer's own connected-app account (`connected`, `account`, `status`), and `connect()` from a click to open the Portal's connect flow; `available: false` on Sites, links and in verification | `const github = useConnection('github')` |
 | `useCloudComputerShell()` | `cloudComputer: 'shell'` Spaces: run a command (`cwd` is a folder or `{ space: '<relative path>' }` inside the Space folder; `detach: true` returns a `job_id` at once), upload a file (`{ path, content }` up to 1 MiB, or `{ file, dest: { space } }` of any size with `uploadProgress`), have the machine download a URL with `importUrl(url, { space })`, and read or stop a detached run with `jobStatus`, `jobLogs(id, { offset, maxBytes })` and `cancelJob` | `const { job_id } = await run('npm run build', { cwd: { space: '' }, detach: true })` |
 | `useCloudComputerJob(jobId, { pollMs? })` | Follow a detached run: polls its status and appends its log (2 s by default, paused while the page is hidden) until it ends, with `cancel()` and `refresh()` | `const { log, running, job, cancel } = useCloudComputerJob(jobId)` |
 | `useCloudComputerService(id, { waitSeconds? })` | Keep a service the Space declares (`cloudComputer: { access: 'shell', services: [...] }`) running while the page is visible: leases it every 30 s, lets it go when hidden or unmounted, fails after a bounded start (90 s by default) with `retry()`. `url(path)` and `fetch(path, init)` reach it through the gate with its pass; `mediaUrl(path)` gives a ten-minute link a media element opens (seeking included); `frameCode(path)` signs a frame in; `price` is the hourly price. When a start is refused only for the viewer's missing approval, `approvalRequired` is true and `allow()` opens the host prompt, then starts the service. `restoring` is true while the machine runs but is still restoring its files after a pause (the lease answers `starting` with `reason: 'restoring'`; it can take minutes). Show `<CloudComputerWaking service={result}>` (from `@notis/sdk/ui`) for the start, a restore, failure (Allow instead of Try again when only the approval is missing) and price in English and French, or `<CloudComputerFrame service="editor" path="/">` to show the service itself in a frame | `const preview = useCloudComputerService('preview')` |
@@ -2094,6 +2095,36 @@ export default handler;
 - **Thread hooks.** `threadHooks` maps a built-in thread action (`archive`, `unarchive`, `read`, `unread`, `star`, `unstar`, `later`, `back`, `delete`) to a function whose input is exactly `threadHookInput` (`{ event, actor, thread, items }`). After that action on a thread that holds one of the Space's items, the function runs as the thread's owner, in the background (`server/lib/space_thread_hooks.py`): a hook never delays, changes or undoes the action, and a failing hook is logged. A change a Space's own function made does not run that Space's hooks, and a change a hook made runs no hook in any Space, so hooks never answer each other without end. A thread that a reply brings back fires `unarchive`, `back` or both, for what it left. `actor` is `person` for the person's own hand (the Portal, a Space view, the CLI), `agent` for one of their agents and `notis` for an automatic change or another Space's function. Hooks follow the `thread_items` flag. Changes that bypass thread control (the floating chat's direct writes) run no hook yet.
 - **Comment options.** `commentOptions` maps an option id to `{ label, function }`, the function taking `commentOptionInput`. When a person picks that label (in any of its languages) among a choice comment's options, the function runs as that person, after the answer is stored. An agent's own answer and free text never run it.
 - **Operating it.** The API reaches the Worker with `SPACE_FUNCTIONS_RUNNER_URL` and `SPACE_FUNCTIONS_RUNNER_SECRET` (the Worker's `RUNNER_SECRET`); without them every call answers `functions_unavailable` (503) and nothing else changes. Nightly and stable each have their own Worker (`wrangler deploy --env nightly`, `wrangler deploy`). A dev stack uses the nightly Worker (`server/.env` holds its two values) and must be started with `--with-ngrok`, because the Worker calls back the stack's public address. `npm run dev` in `functions-worker/` (with `RUNNER_SECRET` in `.dev.vars`) runs the Worker alone on this machine, for work on the Worker itself.
+
+#### Connected apps (`useConnection`)
+
+A page can ask whether the signed-in viewer has a working account in one connected app, and open the Portal's own
+connect flow for it, with no declaration: it reads only the viewer's own account and never a credential
+(FAC-069, `server/lib/viewer_connections.py`, `portal/src/lib/spaceToolkitConnect.ts`).
+
+```tsx
+const github = useConnection('github'); // { available, connected, account, status, connecting, error, connect, refresh }
+
+<Button onClick={() => github.connect()} disabled={github.connecting}>Connect GitHub</Button>
+```
+
+- **Read.** The host answers `GET /portal_integrations/viewer-connection?toolkit=<slug>` for the signed-in viewer:
+  `connected` (an account works now), `status` (the newest account's state, `null` when there is none; a sign-in
+  started and abandoned is no account) and
+  `account` (the GitHub login for GitHub, read through Composio's proxy and cached ten minutes; else the person's own
+  label). Sites, link bearers, View as the public, `notis spaces verify` and the vite preview answer
+  `available: false`.
+- **Connect.** `connect()` must run inside the person's click: the host refuses a call no click started
+  (`navigator.userActivation`), opens the sign-in window before anything awaits, starts the same
+  `/portal_integrations/initiate` call Integrations makes (a reconnect of an expired or failed account, never a
+  second one) and reads its status until it works, the window closes or three minutes pass; it resolves true once
+  the account works. Desktop opens the system browser and returns through the `oauth-complete` deep link; a blocked
+  popup falls back to the same-window redirect. A Space that is not on screen cannot connect.
+- **GitHub on the Cloud Computer.** The connected app does not sign `gh` in: Composio masks connected-account tokens
+  (only their first 8 characters come back), and `gh auth login --with-token` would also demand `read:org`, which
+  Composio's GitHub app does not grant. A Coding view chains the two in one card instead: `connect()`, then GitHub
+  CLI's own device code on the Cloud Computer through `useCloudComputerShell().run`, with the code and the link shown
+  inline.
 
 #### Cloud computer facts (`useCloudComputer`)
 
