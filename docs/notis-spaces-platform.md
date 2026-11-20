@@ -1676,6 +1676,7 @@ Important hooks include:
 - `useTools`
 - `useNotis`
 - `useNotisNavigation`
+- `useNotisSettings`
 - `useTopBarSearch` (legacy apps only; a Space passes `search` to `ListReader`)
 - `useHandover`
 - `useBackend`
@@ -1833,6 +1834,7 @@ Explicit tool declarations and `useTool` calls should use canonical tool names s
 | `useNotis()` | Access app, route, selected collection item, optional exact resource id, and readiness | `const { app, route, collectionItem, resourceId, ready } = useNotis()` |
 | `useHandover()` | Hand a piece of work to the Notis manager chat | `const { handover, pending, available } = useHandover()` |
 | `useNotisNavigation()` | Open a Space view by id with an optional record and declared params, or another route of the app | `toSpace(spaceId, { recordKey: row.record_key })` |
+| `useNotisSettings()` | Open the viewer's Settings over the Space, at the Cloud Computer's repository secrets with a repository prefilled and the Add env file (`env_file`) or Add variable (`variable`) form open; never a name or a value. `available` is false on a Site, a link, a release preview, a page framed inside another, verify and the vite preview. The same place as a plain address: `/manage?settings=cloud&settings_section=repository-secrets&settings_repository=<name>&settings_add=env_file` (CC-434) | `openSettings({ page: 'cloud-computer', section: 'repository-secrets', repository: 'naturalisation-switzerland', add: 'env_file' })` |
 | `useTopBarSearch(opts)` | Legacy apps only: bind the current view to the Portal-owned top-bar search input. A Space passes `search` to `ListReader` instead | `const { setLoading } = useTopBarSearch({ value, onChange })` |
 | `useCloudComputer()` | Read a few facts about the user's cloud computer | `const { facts } = useCloudComputer()` |
 | `useConnection(toolkit)` | The viewer's own connected-app account (`connected`, `account`, `status`), and `connect()` from a click to open the Portal's connect flow; `available: false` on Sites, links and in verification | `const github = useConnection('github')` |
