@@ -537,11 +537,38 @@ are cleaned up rather than recreated.
 
 Only Notis-managed account-skill links are rewritten or removed. CLI-owned base links are preserved. If a non-symlink entry blocks an account skill, the CLI leaves it in place and skips that link.
 
+A link carries the skill's folder name, except for a native skill: its mirror
+folder stays `native-<skill_id>` (the identity file and push/pull checks depend
+on it), but its link in these three folders carries the `name` of its on-disk
+SKILL.md (then the pulled SKILL.md, then `display_name`), because Claude Code
+lists a skill by folder name and Cursor requires the folder to match `name`
+(Codex reads only `name`). The link keeps `native-<skill_id>` when that name is
+not a valid skill name (lowercase words joined by hyphens, at most 64
+characters), when another skill desired in the same agent folder uses it (a
+skill linked under its folder name, or a second native skill with the same
+name, in which case both keep their id), or when an entry the sync does not manage holds it. A native
+skill's old link (`native-<skill_id>` or a previous readable name) is removed
+only after its new link exists, so a pass that stops half-way leaves the skill
+linked. A relink pass (`removeUndesired: false`) plans names only among the
+relinked skills; the next full pass settles a name it could not see collide. `removeAllSymlinksForSkill` removes every link
+to the skill's exact folder, whatever its name, and leaves a link of the same
+name that points at another existing skill folder of the mirror (a native
+skill's readable link). A native skill never takes the name of a base skill
+(`notis-spaces`, `notis-query`, `notis-cli`).
+
 Per-agent deletion detection runs **before gathering** can move local folders.
 It only treats a missing external link as deactivation when the previous scoped
 state has matching cloud identity, matching `cloudUpdatedAt`, an active target,
-and `verifiedAgentLinks[agent] = true`. This evidence is recorded only for a
-readable managed link, separately from requested `agentTargets`. Old state
+and `verifiedAgentLinks[agent]` evidence. This evidence is recorded only for a
+readable managed link, separately from requested `agentTargets`: `true` for a
+link under the folder name, or the link name for a native skill linked under its
+readable name. Detection looks for the link under that recorded name, so `true`
+evidence an older client wrote for a `native-<skill_id>` link finds that link
+while the sync moves it, and is never read as a deletion. A missing recorded
+link is a deletion only when no other link in that agent folder points at the
+skill's folder, so an older client moving the link back is not one. An agent
+folder that cannot be read is never a deletion. Older clients act only
+on `true`, so they never read a renamed link as missing. Old state
 without evidence is repaired first; global disable/re-enable, failed downloads,
 blockers, renamed/recreated skills, and newer cloud edits are not user deletions.
 Missing whole agent directories are repaired rather than mass-deactivated.
