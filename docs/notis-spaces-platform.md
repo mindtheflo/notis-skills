@@ -1081,12 +1081,23 @@ export default defineSpace({ name: 'Video', entry: './view.tsx', cloudComputer: 
   page.
 - **Pinned to the code.** An approval is valid only for the exact revision digest the viewer
   approved. Nothing carries it over to other code: not a teammate's release, not the viewer's own
-  later release, not one their agents or the CLI published with their account, not a Store update
-  or a switch to a copy (both journal a `copy:` release in this Space whose actor is the person
-  who applied it), and not a staged or abandoned release. Other code answers
-  `cloud_computer_approval_required` (status reason `source_changed`) until the viewer approves it
-  again; republishing the approved code itself keeps the approval. Code without a digest can never
-  be approved (`cloud_computer_approval_unavailable`).
+  later release, not one their agents or the CLI published with their account, not a switch to a
+  copy (it journals a `copy:` release in this Space whose actor is the person who applied it), and
+  not a staged or abandoned release. Other code answers `cloud_computer_approval_required` (status
+  reason `source_changed`) until the viewer approves it again; republishing the approved code
+  itself keeps the approval. Code without a digest can never be approved
+  (`cloud_computer_approval_unavailable`).
+- **One approval per installed Store copy.** The exception is code the Store copied into the
+  viewer's own install (recognised from the copy's release, job and install rows, never from
+  names; `server/lib/space_cloud_computer.py` holds the details). The prompt then asks once for
+  the whole copy, and one grant on the copy's root covers every Space installed with it and the
+  Store updates the viewer applies (the update path asks them first), until an update asks for
+  more: a Space newly declaring the Cloud Computer, a higher level or a new service (status reason
+  `access_raised`). A new Allow of the copy replaces its earlier grants. Code the viewer writes
+  into a Space of the copy, code without a digest, a preview, a copy whose root is gone and a
+  copy someone else installed keep the per-revision rule; when the root's grant cannot be
+  written, the Allow falls back to this Space's own approval. The installer's `GET grants` on any
+  Space of the copy lists the copy's grant, and revoking it withdraws it for all of them.
 - **What this protects, and what it does not.** Space source is not a JS sandbox: it runs in the
   Portal realm with the viewer's signed-in session. The prompt, the trusted
   click, the click delay and the pin protect a viewer from code they did not review that reached
