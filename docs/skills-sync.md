@@ -556,6 +556,16 @@ name that points at another existing skill folder of the mirror (a native
 skill's readable link). A native skill never takes the name of a base skill
 (`notis-spaces`, `notis-query`, `notis-cli`).
 
+The Cloud Computer names links by the same rule, through a Python copy of
+`readableNativeLinkName` and `planAgentLinkNames` in
+`server/lib/sandbox_skill_links.py` (the link pass the backend runs there; its
+docstring says why it cannot run the CLI's code). It reads only the on-disk
+SKILL.md `name`: there is no pulled copy or `display_name` on the machine.
+The Cloud Computer keeps no per-agent deletion evidence, so a move is never read
+as a removal there. Both copies are tested against
+`packages/cli/test/fixtures/native-skill-link-names.json`: change the rule in
+both and add its case to that file.
+
 Per-agent deletion detection runs **before gathering** can move local folders.
 It only treats a missing external link as deactivation when the previous scoped
 state has matching cloud identity, matching `cloudUpdatedAt`, an active target,
