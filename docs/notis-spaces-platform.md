@@ -506,7 +506,9 @@ automation, and turning a Site off revokes it at once.
   publish at once for that team; public ones wait for a reviewer (never the
   publisher) and store the package and its diff only, with no external registry
   call. An install is an independent copy through the package engine (structure
-  plus explicit starter rows, installer-owned, no grants). An update is three-way
+  plus explicit starter rows, installer-owned, never the publisher's grants; the
+  installer's own grants: `server/lib/space_copy_grants.py`, SPC-826).
+  An update is three-way
   per package key: what the publisher left unchanged keeps the installer's
   version, publisher-only changes apply, and both-changed keys become conflicts
   that keep local content until `keep_mine` or `take_theirs`. Where a sub-Space
