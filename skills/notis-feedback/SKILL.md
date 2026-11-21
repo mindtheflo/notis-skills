@@ -7,7 +7,7 @@ mcp_tool_patterns: []
 
 # Notis Feedback
 
-Use the shared [SDK context pattern](../notis-spaces/references/context.md) and the [Comments](../notis-spaces/references/sdk.md#comments) section owned by `notis-spaces`. If the sibling references are not installed, load the `notis-spaces` skill or its hosted MCP guide by name to access them. Read them before authoring feedback interactions; do not maintain a second report renderer, comment store or feedback contract.
+Use the shared [SDK context pattern](../notis-spaces/references/context.md) and the [Comments](../notis-spaces/references/comments.md) reference owned by `notis-spaces`. If the sibling references are not installed, load the `notis-spaces` skill or its hosted MCP guide by name to access them. Read them before authoring feedback interactions; do not maintain a second report renderer, comment store or feedback contract.
 
 1. Identify the existing report or Space page and the content the user wants reviewed.
 2. Selected text on every Space page already offers Cite (a selected-text pill in chat) and, where comments are on, Comment (a comment in the host Comments panel). Add nothing for passage feedback. Do not create a Comments database, comment columns or your own comment box.
