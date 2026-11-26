@@ -21,6 +21,7 @@ Common `LOCAL_NOTIS_INSERT_AUTOMATION` fields:
 - `name` (optional) — short label.
 - `channel` / `channel_account_id` (optional) — **where the result is delivered**; defaults to the current channel. This is the one and only place delivery is set.
 - `keep_context` (optional, default true) — `true` reuses a single pinned thread across runs; `false` starts a fresh thread each run. Leave it out: pass `false` only when the user said runs should not remember earlier ones, never by your own judgment.
+- `thread_id` (optional) — leave it out: a Manager automation that keeps context joins the conversation you create it from, so its runs and replies land there. Pass another of the user's conversation ids (same channel) to use that one, or `"none"` when the user wants its runs in a conversation of their own. On `LOCAL_NOTIS_UPDATE_AUTOMATION`, a conversation id attaches an existing automation to it from the next run on, and `"none"` detaches it.
 - `intelligence_mode` (optional) — `auto` (default), `low`, `medium`, or `high`.
 
 `LOCAL_NOTIS_INSERT_AUTOMATION` returns `automation_id`, the portal URLs, and — for webhooks — the `webhook_url`. Surface those to the user.
